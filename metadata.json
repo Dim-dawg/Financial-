@@ -1,0 +1,5 @@
+{
+  "name": "Cipher Finance",
+  "description": "An AI-powered financial dashboard to consolidate bank statements, categorize transactions, and generate P&L statements for loan applications.",
+  "requestFramePermissions": []
+}
