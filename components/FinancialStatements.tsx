@@ -38,26 +38,25 @@ const StatementHeader: React.FC<{ title: string; subtitle?: string }> = ({ title
   }, [period]);
 
   return (
-    <div className="text-center mb-12 border-b-2 border-slate-900 pb-8">
+    <div className="text-center mb-8 md:mb-12 border-b-2 border-slate-900 pb-6 md:pb-8">
       <input 
         value={businessName} 
         onChange={e => setBusinessName(e.target.value)}
-        className="text-3xl font-bold uppercase tracking-widest text-slate-800 mb-2 text-center w-full bg-transparent border-none focus:ring-0"
-        placeholder="ENTER BUSINESS NAME"
+        className="text-xl md:text-3xl font-black uppercase tracking-widest text-slate-800 mb-2 text-center w-full bg-transparent border-none focus:ring-0"
+        placeholder="BUSINESS NAME"
       />
-      <h1 className="text-xl font-medium text-slate-600 mb-4">{title}</h1>
-      <div className="flex flex-col items-center justify-center space-y-1 text-slate-500 text-sm">
+      <h1 className="text-lg md:text-xl font-medium text-slate-500 mb-4">{title}</h1>
+      <div className="flex flex-col items-center justify-center space-y-1 text-slate-400 text-[10px] md:text-xs">
         <div className="flex items-center">
           <Calendar className="w-3 h-3 mr-2 print:hidden" />
           <input 
             value={period} 
             onChange={e => setPeriod(e.target.value)}
-            className="text-center bg-transparent border-none focus:ring-0 p-0 text-slate-500"
-            placeholder="Statement Period (e.g. FY 2024)"
+            className="text-center bg-transparent border-none focus:ring-0 p-0 text-slate-400"
+            placeholder="Statement Period"
           />
         </div>
-        <p>Prepared on: {new Date().toLocaleDateString()}</p>
-        <p className="text-[10px] uppercase tracking-tighter opacity-50">Cipher Finance AI-Generated Reporting</p>
+        <p>Generated: {new Date().toLocaleDateString()}</p>
       </div>
     </div>
   );
@@ -78,15 +77,8 @@ const EditableAmount: React.FC<{
 
   const handleSave = () => {
     const num = parseFloat(editValue);
-    if (!isNaN(num)) {
-      onChange(num);
-    }
+    if (!isNaN(num)) onChange(num);
     setIsEditing(false);
-  };
-
-  const handleReset = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onChange(undefined);
   };
 
   const hasOverride = originalValue !== undefined && Math.abs(value - originalValue) > 0.01;
@@ -100,7 +92,7 @@ const EditableAmount: React.FC<{
         onChange={(e) => setEditValue(e.target.value)}
         onBlur={handleSave}
         onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-        className="w-24 px-1 py-0.5 text-right border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm font-medium"
+        className="w-20 px-1 py-0.5 text-right border border-blue-400 rounded text-xs font-bold"
       />
     );
   }
@@ -108,20 +100,10 @@ const EditableAmount: React.FC<{
   return (
     <div 
       onClick={() => isEditable && setIsEditing(true)}
-      className={`group flex items-center justify-end gap-2 ${isEditable ? 'cursor-pointer hover:bg-slate-100 px-1 -mr-1 rounded' : ''}`}
-      title={isEditable ? "Click to edit amount" : ""}
+      className={`group flex items-center justify-end gap-1 ${isEditable ? 'cursor-pointer hover:bg-slate-50 px-1 rounded transition-colors' : ''}`}
     >
-      {hasOverride && (
-        <button 
-          onClick={handleReset}
-          className="text-slate-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 print:hidden"
-          title="Reset to calculated value"
-        >
-          <RotateCcw className="w-3 h-3" />
-        </button>
-      )}
-      <span className={`font-medium ${value < 0 ? 'text-red-500' : ''} ${hasOverride ? 'text-blue-700' : ''}`}>
-        ${value.toLocaleString(undefined, {minimumFractionDigits: 2})}
+      <span className={`font-bold ${value < 0 ? 'text-rose-500' : 'text-slate-800'} ${hasOverride ? 'text-blue-600' : ''}`}>
+        ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(value)}
         {hasOverride && '*'}
       </span>
     </div>
@@ -152,75 +134,70 @@ export const ProfitLossStatement: React.FC<FinancialStatementsProps> = ({ transa
   }, [transactions]);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex justify-end space-x-3 print:hidden">
-        <button onClick={() => window.print()} className="flex items-center px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition">
-          <Printer className="w-4 h-4 mr-2" /> Print / Save as PDF
+    <div className="max-w-4xl mx-auto space-y-4 animate-fade-in">
+      <div className="flex justify-end print:hidden">
+        <button onClick={() => window.print()} className="flex items-center px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-200 transition active:scale-95">
+          <Printer className="w-4 h-4 mr-2" /> Print Statement
         </button>
       </div>
 
-      <div className="bg-white p-12 shadow-lg border border-slate-200 min-h-[1000px] text-slate-900 print:shadow-none print:border-none print:p-0">
+      <div className="bg-white p-6 md:p-12 shadow-xl border border-slate-100 min-h-[600px] text-slate-900 print:shadow-none print:p-0">
         <StatementHeader title="Profit & Loss Statement" />
 
-        <div className="mb-8">
-          <h3 className="text-lg font-bold text-slate-700 border-b-2 border-slate-800 pb-1 mb-4 uppercase">Operating Revenue</h3>
-          <table className="w-full text-sm">
-            <tbody>
-              {Object.entries(data.income).map(([cat, amount]) => (
-                <tr key={cat} className="border-b border-slate-100">
-                  <td className="py-2 text-slate-600 w-2/3">{cat}</td>
-                  {/* Fixed toLocaleString error by casting amount to number */}
-                  <td className="py-2 text-right font-medium w-1/3">${(amount as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                </tr>
-              ))}
-              <tr className="bg-slate-50 font-bold">
-                <td className="py-3 pl-2 text-slate-800 uppercase text-xs">Total Revenue</td>
-                {/* Fixed toLocaleString error by casting to number */}
-                <td className="py-3 text-right text-slate-800">${(data.totalIncome as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mb-8">
-          <h3 className="text-lg font-bold text-slate-700 border-b-2 border-slate-800 pb-1 mb-4 uppercase">Operating Expenses</h3>
-          <table className="w-full text-sm">
-            <tbody>
-              {Object.entries(data.expenses).sort(([, a], [, b]) => (b as number) - (a as number)).map(([cat, amount]) => (
-                <tr key={cat} className="border-b border-slate-100">
-                  <td className="py-2 text-slate-600 w-2/3">{cat}</td>
-                  {/* Fixed toLocaleString error by casting amount to number */}
-                  <td className="py-2 text-right font-medium w-1/3">${(amount as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                </tr>
-              ))}
-              <tr className="bg-slate-50 font-bold">
-                <td className="py-3 pl-2 text-slate-800 uppercase text-xs">Total Expenses</td>
-                {/* Fixed toLocaleString error by casting to number */}
-                <td className="py-3 text-right text-slate-800">${(data.totalExpense as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-12 border-t-4 border-double border-slate-800 pt-4">
-          <div className="flex justify-between items-center text-xl font-bold">
-            <span className="uppercase">Net Operating Income</span>
-            {/* Fixed toLocaleString error by casting to number */}
-            <span className={data.netProfit >= 0 ? "text-slate-900" : "text-red-600"}>
-              ${(data.netProfit as number).toLocaleString(undefined, {minimumFractionDigits: 2})}
-            </span>
+        <div className="mb-10">
+          <h3 className="text-sm font-black text-slate-800 border-b-2 border-slate-900 pb-1 mb-4 uppercase tracking-tighter">Operating Revenue</h3>
+          <div className="divide-y divide-slate-100">
+            {Object.entries(data.income).map(([cat, amount]) => (
+              <div key={cat} className="flex justify-between py-2 text-xs md:text-sm">
+                <span className="text-slate-500">{cat}</span>
+                <span className="font-bold">${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(amount as number)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between py-4 font-black uppercase tracking-tighter text-slate-900 bg-slate-50/50 px-2 mt-2">
+              <span>Total Revenue</span>
+              <span>${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(data.totalIncome as number)}</span>
+            </div>
           </div>
         </div>
 
-        <div className="mt-12 p-4 bg-slate-50 border border-slate-100 rounded text-[10px] text-slate-500 italic">
-          Disclaimer: This financial statement is prepared based on provided transaction history and categorized using AI. It has not been audited by a certified public accountant.
+        <div className="mb-10">
+          <h3 className="text-sm font-black text-slate-800 border-b-2 border-slate-900 pb-1 mb-4 uppercase tracking-tighter">Operating Expenses</h3>
+          <div className="divide-y divide-slate-100">
+            {Object.entries(data.expenses).sort(([, a], [, b]) => (b as number) - (a as number)).map(([cat, amount]) => (
+              <div key={cat} className="flex justify-between py-2 text-xs md:text-sm">
+                <span className="text-slate-500">{cat}</span>
+                <span className="font-bold">${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(amount as number)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between py-4 font-black uppercase tracking-tighter text-slate-900 bg-slate-50/50 px-2 mt-2">
+              <span>Total Expenses</span>
+              <span>${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(data.totalExpense as number)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-12 border-t-4 border-double border-slate-900 pt-6">
+          <div className="flex justify-between items-center text-lg md:text-2xl font-black uppercase italic tracking-tighter">
+            <span>Net Operating Income</span>
+            <span className={data.netProfit >= 0 ? "text-slate-900" : "text-rose-600"}>
+              ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(data.netProfit as number)}
+            </span>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-export const BalanceSheet: React.FC<BalanceSheetProps> = ({ transactions, adjustments, overrides = {}, onAddAdjustment, onRemoveAdjustment, onOverride = () => {} }) => {
+// Fix: Updated onOverride default parameter to match its type signature, fixing "Expected 0 arguments, but got 2" errors.
+export const BalanceSheet: React.FC<BalanceSheetProps> = ({ 
+  transactions, 
+  adjustments, 
+  overrides = {}, 
+  onAddAdjustment, 
+  onRemoveAdjustment, 
+  onOverride = (_cat: string, _amount: number | undefined) => {} 
+}) => {
   const [newAdjName, setNewAdjName] = useState('');
   const [newAdjAmount, setNewAdjAmount] = useState('');
   const [newAdjType, setNewAdjType] = useState<'ASSET' | 'LIABILITY'>('ASSET');
@@ -258,101 +235,108 @@ export const BalanceSheet: React.FC<BalanceSheetProps> = ({ transactions, adjust
     totalLiabilities += adjustments.filter(a => a.type === 'LIABILITY').reduce((sum, item) => sum + item.amount, 0);
 
     const retainedEarnings = operatingIncome - operatingExpense;
-    return { cash: finalCash, rawCash: cashBalance, fixedAssets, rawFixedAssets, liabilities, rawLiabilities, manualAssets: adjustments.filter(a => a.type === 'ASSET'), manualLiabilities: adjustments.filter(a => a.type === 'LIABILITY'), totalFixedAssets, totalLiabilities, retainedEarnings, totalAssets: finalCash + totalFixedAssets, totalLiabAndEquity: totalLiabilities + retainedEarnings };
+    return { 
+      cash: finalCash, rawCash: cashBalance, fixedAssets, rawFixedAssets, 
+      liabilities, rawLiabilities, manualAssets: adjustments.filter(a => a.type === 'ASSET'), 
+      manualLiabilities: adjustments.filter(a => a.type === 'LIABILITY'), 
+      totalFixedAssets, totalLiabilities, retainedEarnings, 
+      totalAssets: finalCash + totalFixedAssets, 
+      totalLiabAndEquity: totalLiabilities + retainedEarnings 
+    };
   }, [transactions, adjustments, overrides]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex justify-between items-start print:hidden">
-         <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex gap-2 items-end">
-            <div>
-               <label className="text-xs font-semibold text-slate-500 block mb-1">Manual Entry Name</label>
-               <input type="text" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-40" placeholder="e.g. Real Estate" value={newAdjName} onChange={e => setNewAdjName(e.target.value)} />
+      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-start gap-4 print:hidden">
+         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-2 items-end">
+            <div className="flex-1 min-w-[120px]">
+               <input type="text" className="w-full px-3 py-2 border-slate-200 rounded-lg text-xs" placeholder="Entry Name" value={newAdjName} onChange={e => setNewAdjName(e.target.value)} />
             </div>
-            <div>
-               <label className="text-xs font-semibold text-slate-500 block mb-1">Amount</label>
-               <input type="number" className="px-2 py-1.5 border border-slate-300 rounded text-sm w-28" placeholder="0.00" value={newAdjAmount} onChange={e => setNewAdjAmount(e.target.value)} />
+            <div className="w-24">
+               <input type="number" className="w-full px-3 py-2 border-slate-200 rounded-lg text-xs" placeholder="0.00" value={newAdjAmount} onChange={e => setNewAdjAmount(e.target.value)} />
             </div>
-            <div>
-               <label className="text-xs font-semibold text-slate-500 block mb-1">Type</label>
-               <select className="px-2 py-1.5 border border-slate-300 rounded text-sm" value={newAdjType} onChange={(e) => setNewAdjType(e.target.value as any)}>
+            <div className="w-24">
+               <select className="w-full px-3 py-2 border-slate-200 rounded-lg text-xs bg-white" value={newAdjType} onChange={(e) => setNewAdjType(e.target.value as any)}>
                  <option value="ASSET">Asset</option>
                  <option value="LIABILITY">Liability</option>
                </select>
             </div>
-            <button onClick={() => { if(newAdjName && newAdjAmount) onAddAdjustment({ id: Date.now().toString(), name: newAdjName, amount: parseFloat(newAdjAmount), type: newAdjType }); setNewAdjName(''); setNewAdjAmount(''); }} className="bg-slate-800 text-white p-1.5 rounded hover:bg-slate-700 h-[34px]"><Plus className="w-5 h-5" /></button>
+            <button onClick={() => { if(newAdjName && newAdjAmount) onAddAdjustment({ id: Date.now().toString(), name: newAdjName, amount: parseFloat(newAdjAmount), type: newAdjType }); setNewAdjName(''); setNewAdjAmount(''); }} className="bg-slate-900 text-white p-2 rounded-lg hover:bg-slate-700 transition"><Plus className="w-5 h-5" /></button>
          </div>
-        <button onClick={() => window.print()} className="flex items-center px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition"><Printer className="w-4 h-4 mr-2" /> Print / Save as PDF</button>
+        <button onClick={() => window.print()} className="flex items-center justify-center px-4 py-3 bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-slate-100 transition">
+          <Printer className="w-4 h-4 mr-2" /> Print Sheet
+        </button>
       </div>
 
-      <div className="bg-white p-12 shadow-lg border border-slate-200 min-h-[1000px] text-slate-900 print:shadow-none print:border-none print:p-0">
+      <div className="bg-white p-6 md:p-12 shadow-xl border border-slate-100 min-h-[800px] text-slate-900 print:shadow-none print:p-0">
         <StatementHeader title="Balance Sheet" />
-        <div className="grid grid-cols-2 gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16">
           <div>
-            <h3 className="text-lg font-bold text-slate-700 border-b-2 border-slate-800 pb-1 mb-4 uppercase">Assets</h3>
+            <h3 className="text-sm font-black text-slate-800 border-b-2 border-slate-900 pb-1 mb-6 uppercase tracking-tighter">Assets</h3>
             <div className="space-y-6">
               <div>
-                <h4 className="font-semibold text-slate-800 mb-2">Current Assets</h4>
-                <div className="flex justify-between text-sm py-1 border-b border-slate-100">
+                <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-2">Current Assets</h4>
+                <div className="flex justify-between text-xs py-2 border-b border-slate-50">
                   <span className="text-slate-600">Cash & Equivalents</span>
                   <EditableAmount value={data.cash} originalValue={data.rawCash} onChange={(val) => onOverride('Cash & Equivalents', val)} />
                 </div>
               </div>
               <div>
-                <h4 className="font-semibold text-slate-800 mb-2">Fixed & Other Assets</h4>
-                {Object.keys(data.fixedAssets).map((cat) => (
-                  <div key={cat} className="flex justify-between text-sm py-1 border-b border-slate-100">
-                    <span className="text-slate-600">{cat}</span>
-                    <EditableAmount value={data.fixedAssets[cat]} originalValue={data.rawFixedAssets[cat]} onChange={(val) => onOverride(cat, val)} />
-                  </div>
-                ))}
-                {data.manualAssets.map(adj => (
-                  <div key={adj.id} className="flex justify-between text-sm py-1 group border-b border-slate-100">
-                    <span className="text-blue-600 flex items-center">{adj.name} <button onClick={() => onRemoveAdjustment(adj.id)} className="ml-2 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 print:hidden"><Trash2 className="w-3 h-3" /></button></span>
-                    {/* Fixed toLocaleString error by casting adj.amount to number */}
-                    <span className="font-medium text-slate-700">${(adj.amount as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                  </div>
-                ))}
-              </div>
-              {/* Fixed toLocaleString error by casting data.totalAssets to number */}
-              <div className="flex justify-between font-bold pt-4 border-t-2 border-slate-800 mt-8 uppercase text-sm"><span>Total Assets</span><span>${(data.totalAssets as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
-            </div>
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-slate-700 border-b-2 border-slate-800 pb-1 mb-4 uppercase">Liabilities & Equity</h3>
-            <div className="space-y-6">
-              <div>
-                <h4 className="font-semibold text-slate-800 mb-2">Liabilities</h4>
-                {Object.keys(data.liabilities).map((cat) => (
-                  <div key={cat} className="flex justify-between text-sm py-1 border-b border-slate-100">
-                    <span className="text-slate-600">{cat}</span>
-                    <EditableAmount value={data.liabilities[cat]} originalValue={data.rawLiabilities[cat]} onChange={(val) => onOverride(cat, val)} />
-                  </div>
-                ))}
-                {data.manualLiabilities.map(adj => (
-                  <div key={adj.id} className="flex justify-between text-sm py-1 group border-b border-slate-100">
-                    <span className="text-blue-600 flex items-center">{adj.name} <button onClick={() => onRemoveAdjustment(adj.id)} className="ml-2 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 print:hidden"><Trash2 className="w-3 h-3" /></button></span>
-                    {/* Fixed toLocaleString error by casting adj.amount to number */}
-                    <span className="font-medium text-slate-700">${(adj.amount as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <h4 className="font-semibold text-slate-800 mb-2">Equity</h4>
-                <div className="flex justify-between text-sm py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Retained Earnings</span>
-                  {/* Fixed toLocaleString error by casting to number */}
-                  <span className="font-medium">${(data.retainedEarnings as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-2">Fixed & Other</h4>
+                <div className="divide-y divide-slate-50">
+                  {Object.keys(data.fixedAssets).map((cat) => (
+                    <div key={cat} className="flex justify-between text-xs py-2">
+                      <span className="text-slate-600">{cat}</span>
+                      <EditableAmount value={data.fixedAssets[cat]} originalValue={data.rawFixedAssets[cat]} onChange={(val) => onOverride(cat, val)} />
+                    </div>
+                  ))}
+                  {data.manualAssets.map(adj => (
+                    <div key={adj.id} className="flex justify-between text-xs py-2 group">
+                      <span className="text-blue-600 font-medium flex items-center">{adj.name} <button onClick={() => onRemoveAdjustment(adj.id)} className="ml-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 print:hidden transition"><Trash2 className="w-3 h-3" /></button></span>
+                      <span className="font-bold text-slate-800">${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(adj.amount as number)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-              {/* Fixed toLocaleString error by casting data.totalLiabAndEquity to number */}
-              <div className="flex justify-between font-bold pt-4 border-t-2 border-slate-800 mt-8 uppercase text-sm"><span>Total Liab. & Equity</span><span>${(data.totalLiabAndEquity as number).toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
+              <div className="flex justify-between font-black pt-4 border-t-2 border-slate-900 mt-6 uppercase text-sm tracking-tighter">
+                <span>Total Assets</span>
+                <span>${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(data.totalAssets as number)}</span>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="mt-12 p-4 bg-blue-50 border border-blue-100 rounded text-[10px] text-slate-600 print:hidden flex items-start">
-           <Info className="w-4 h-4 mr-2 text-blue-500 mt-0.5 flex-shrink-0" />
-           <div><strong>Adjustment Notes:</strong> Derived values marked with <span className="text-blue-700">*</span> have been manually adjusted for reporting accuracy. Manual entries are highlighted in blue.</div>
+          <div className="mt-8 md:mt-0">
+            <h3 className="text-sm font-black text-slate-800 border-b-2 border-slate-900 pb-1 mb-6 uppercase tracking-tighter">Liabilities & Equity</h3>
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-2">Liabilities</h4>
+                <div className="divide-y divide-slate-50">
+                  {Object.keys(data.liabilities).map((cat) => (
+                    <div key={cat} className="flex justify-between text-xs py-2">
+                      <span className="text-slate-600">{cat}</span>
+                      <EditableAmount value={data.liabilities[cat]} originalValue={data.rawLiabilities[cat]} onChange={(val) => onOverride(cat, val)} />
+                    </div>
+                  ))}
+                  {data.manualLiabilities.map(adj => (
+                    <div key={adj.id} className="flex justify-between text-xs py-2 group">
+                      <span className="text-blue-600 font-medium flex items-center">{adj.name} <button onClick={() => onRemoveAdjustment(adj.id)} className="ml-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 print:hidden transition"><Trash2 className="w-3 h-3" /></button></span>
+                      <span className="font-bold text-slate-800">${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(adj.amount as number)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-2">Equity</h4>
+                <div className="flex justify-between text-xs py-2 border-b border-slate-50">
+                  <span className="text-slate-600">Retained Earnings</span>
+                  <span className="font-bold text-slate-800">${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(data.retainedEarnings as number)}</span>
+                </div>
+              </div>
+              <div className="flex justify-between font-black pt-4 border-t-2 border-slate-900 mt-6 uppercase text-sm tracking-tighter">
+                <span>Total Liab. & Equity</span>
+                <span>${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(data.totalLiabAndEquity as number)}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

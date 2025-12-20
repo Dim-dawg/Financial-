@@ -12,6 +12,17 @@ export interface Transaction {
   type: TransactionType;
   category: string;
   originalDescription: string;
+  documentId?: string; // Links transaction to source document
+  entityId?: string; 
+}
+
+export interface EntityProfile {
+  id: string;
+  name: string;
+  type: 'VENDOR' | 'CLIENT';
+  description: string;
+  tags: string[];
+  keywordMatch: string;
 }
 
 export interface CategorizationRule {
@@ -22,9 +33,13 @@ export interface CategorizationRule {
 }
 
 export interface ProcessingStatus {
+  id: string;
   fileName: string;
-  status: 'pending' | 'processing' | 'completed' | 'error';
+  fileType: string;
+  data: string; // Base64 data for review/preview
+  status: 'pending' | 'processing' | 'completed' | 'error' | 'cancelled';
   message?: string;
+  transactionCount?: number;
 }
 
 export interface SheetUser {
