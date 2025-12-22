@@ -77,7 +77,6 @@ export const parseDocumentWithGemini = async (
   base64Data: string
 ): Promise<Transaction[]> => {
   return withRetry(async () => {
-    // Create new instance to ensure latest key is used
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const mimeType = file.type || 'image/jpeg';
     
@@ -109,5 +108,32 @@ export const parseDocumentWithGemini = async (
       category: item.category,
       originalDescription: item.description,
     }));
+  });
+};
+
+export const generateFinancialNarrative = async (summary: {
+  totalIncome: number;
+  totalExpense: number;
+  netProfit: number;
+  topExpenses: string[];
+}): Promise<string> => {
+  return withRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `You are a professional financial consultant preparing a business owner for a bank loan interview. 
+    Write a concise (3 paragraph) "Management Discussion and Analysis" (MD&A) based on the following data:
+    - Total Revenue: $${summary.totalIncome.toLocaleString()}
+    - Total Operating Expenses: $${summary.totalExpense.toLocaleString()}
+    - Net Operating Income: $${summary.netProfit.toLocaleString()}
+    - Significant Expense Categories: ${summary.topExpenses.join(', ')}
+
+    The tone should be professional, data-driven, and highlight business viability and debt-repayment capability. 
+    Focus on stability and margin strength. Avoid overly flowery language.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+    });
+
+    return response.text || "Financial summary could not be generated at this time.";
   });
 };
