@@ -1,9 +1,20 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cipher Finance | AI Financial Dashboard</title>
+    <!-- Google Analytics - bank-transactions-453516 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-494099882"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-494099882', {
+        send_page_view: false // We handle page views manually in App.tsx for SPAs
+      });
+    </script>
     <!-- Shim 'process' immediately to prevent ESM modules from crashing -->
     <script>
       window.process = window.process || {};
@@ -30,6 +41,27 @@
         .max-w-7xl {
           max-width: 100% !important;
         }
+      }
+      @keyframes progress-indefinite {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+      .animate-progress-indefinite {
+        animation: progress-indefinite 1.5s infinite linear;
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.3s ease-out forwards;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-slide-up {
+        animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes slideUp {
+        from { transform: translate(-50%, 100%); }
+        to { transform: translate(-50%, 0); }
       }
     </style>
     <script async src="https://ga.jspm.io/npm:es-module-shims@1.10.1/dist/es-module-shims.js"></script>

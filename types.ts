@@ -1,7 +1,12 @@
 
 export enum TransactionType {
-  INCOME = 'INCOME',
-  EXPENSE = 'EXPENSE',
+  INCOME = 'income',
+  EXPENSE = 'expense',
+}
+
+export interface Category {
+  id: string;
+  name: string;
 }
 
 export interface Transaction {
@@ -11,9 +16,11 @@ export interface Transaction {
   amount: number;
   type: TransactionType;
   category: string;
+  categoryId?: string;
   originalDescription: string;
-  documentId?: string; // Links transaction to source document
+  documentId?: string;
   entityId?: string; 
+  entityName?: string;
 }
 
 export interface EntityProfile {
@@ -23,12 +30,16 @@ export interface EntityProfile {
   description: string;
   tags: string[];
   keywordMatch: string;
+  defaultCategoryId?: string;
+  // Add defaultCategory name for UI and automation resolution
+  defaultCategory?: string;
 }
 
 export interface CategorizationRule {
   id: string;
   keyword: string;
   targetCategory: string;
+  targetCategoryId?: string;
   targetType?: TransactionType;
 }
 
@@ -36,16 +47,10 @@ export interface ProcessingStatus {
   id: string;
   fileName: string;
   fileType: string;
-  data: string; // Base64 data for review/preview
+  data: string;
   status: 'pending' | 'processing' | 'completed' | 'error' | 'cancelled';
   message?: string;
   transactionCount?: number;
-}
-
-export interface SheetUser {
-  user_id: string;
-  email: string;
-  name: string;
 }
 
 export interface TransactionFilter {
@@ -64,11 +69,10 @@ export interface BalanceSheetAdjustment {
   type: 'ASSET' | 'LIABILITY';
 }
 
-export enum FileType {
-  PDF = 'application/pdf',
-  CSV = 'text/csv',
-  PNG = 'image/png',
-  JPEG = 'image/jpeg',
+export interface SheetUser {
+  id: string;
+  email: string;
+  name: string;
 }
 
 export const DEFAULT_CATEGORIES = [

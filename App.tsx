@@ -1,9 +1,12 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   UploadCloud, FileText, Loader2, 
   Table as TableIcon, Database, PieChart as PieIcon, 
   FileSpreadsheet, Users, Key, X, Trash2,
-  Files as FilesIcon, Wallet, Shield
+  Files as FilesIcon, Wallet, Shield, FileBadge, CheckCircle2,
+  Settings, LayoutDashboard, Briefcase, Wand2, Plus, Server, BarChart3,
+  AlertTriangle, Link, Info, Menu
 } from 'lucide-react';
 import { 
   Transaction, 
@@ -13,6 +16,7 @@ import {
   TransactionFilter,
   BalanceSheetAdjustment,
   EntityProfile,
+  Category,
   DEFAULT_CATEGORIES
 } from './types';
 import { parseDocumentWithGemini, readFileAsBase64 } from './services/geminiService';
@@ -22,275 +26,543 @@ import TransactionTable from './components/TransactionTable';
 import RulesEngine from './components/RulesEngine';
 import CategoryManager from './components/CategoryManager';
 import EntityProfiles from './components/EntityProfiles';
+import FilterBar from './components/FilterBar';
 import { ProfitLossStatement, BalanceSheet } from './components/FinancialStatements';
+import FinancialReport from './components/FinancialReport';
+import DatabaseConfigModal from './components/DatabaseConfigModal';
 
-function App() {
+// Global Analytics Helper
+const trackEvent = (action: string, category: string, label?: string, value?: number) => {
+  if (typeof (window as any).gtag === 'function') {
+    (window as any).gtag('event', action, {
+      event_category: category,
+      event_label: label,
+      value: value
+    });
+  }
+};
+
+const DEFAULT_GA_ID = 'G-494099882';
+
+export default function App() {
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [totalDbCount, setTotalDbCount] = useState(0);
   const [processingQueue, setProcessingQueue] = useState<ProcessingStatus[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'entities' | 'pnl' | 'balance' | 'documents'>('dashboard');
-  const [isAutoProcessing, setIsAutoProcessing] = useState(true);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'entities' | 'report' | 'documents'>('dashboard');
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   
-  const isProcessingRef = useRef(false);
-
-  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>(
+    DEFAULT_CATEGORIES.map(name => ({ id: name, name }))
+  );
   const [rules, setRules] = useState<CategorizationRule[]>([]);
   const [profiles, setProfiles] = useState<EntityProfile[]>([]);
   const [bsAdjustments, setBsAdjustments] = useState<BalanceSheetAdjustment[]>([]);
   const [bsOverrides, setBsOverrides] = useState<Record<string, number>>({});
 
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+  const [isDbConfigOpen, setIsDbConfigOpen] = useState(false);
   const [filters, setFilters] = useState<TransactionFilter>({
     startDate: '', endDate: '', category: '', minAmount: '', maxAmount: '', search: ''
   });
 
-  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
-  const [sbUrl, setSbUrl] = useState(localStorage.getItem('cf_supabase_url') || '');
-  const [sbKey, setSbKey] = useState(localStorage.getItem('cf_supabase_key') || '');
+  const isConfigured = db.isSupabaseConfigured();
 
+  // Navigation Items
+  const navItems = [
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
+    { id: 'transactions', icon: Briefcase, label: 'Ledger' },
+    { id: 'entities', icon: Users, label: 'Profiles' },
+    { id: 'report', icon: FileBadge, label: 'Loan Pack' },
+  ];
+
+  // Analytics: Track Virtual Page Views on tab changes
   useEffect(() => {
-    const initData = async () => {
-      if (db.isSupabaseConfigured()) {
-        try {
-          const [txs, rls, profs, cats] = await Promise.all([
-            db.getTransactions(),
-            db.getRules(),
-            db.getProfiles(),
-            db.getCategories()
-          ]);
-          setTransactions(txs);
-          setRules(rls);
-          setProfiles(profs);
-          if (cats.length > 0) setCategories(cats);
-        } catch (err) {
-          console.error("Failed to load Supabase data", err);
-        }
-      }
-      setIsInitialized(true);
-    };
-    initData();
+    const gaId = localStorage.getItem('cf_ga_id') || DEFAULT_GA_ID;
+    if (typeof (window as any).gtag === 'function') {
+      (window as any).gtag('config', gaId, {
+        page_title: activeTab.charAt(0).toUpperCase() + activeTab.slice(1),
+        page_location: window.location.href,
+        page_path: `/${activeTab}`,
+        send_page_view: true
+      });
+    }
+  }, [activeTab]);
+
+  const loadData = useCallback(async (currentFilters?: TransactionFilter) => {
+    if (!db.isSupabaseConfigured()) return;
+    setIsFetching(true);
+    try {
+      const [txs, rls, profs, cats, totalCount] = await Promise.all([
+        db.getTransactions(currentFilters),
+        db.getRules(),
+        db.getProfiles(),
+        db.getCategories(),
+        db.getTransactionsTotalInDb()
+      ]);
+      setTransactions(txs);
+      setRules(rls);
+      setProfiles(profs);
+      setTotalDbCount(totalCount);
+      if (cats.length > 0) setCategories(cats);
+    } catch (err) {
+      console.error("Fetch failed", err);
+    } finally {
+      setIsFetching(false);
+    }
   }, []);
 
   useEffect(() => {
-    if (!isAutoProcessing) return;
-
-    const processNext = async () => {
-      if (isProcessingRef.current) return;
-      
-      const nextItem = processingQueue.find(item => item.status === 'pending');
-      if (!nextItem) return;
-
-      isProcessingRef.current = true;
-      setProcessingQueue(prev => prev.map(item => item.id === nextItem.id ? { ...item, status: 'processing' } : item));
-
-      try {
-        const extracted = await parseDocumentWithGemini({ name: nextItem.fileName, type: nextItem.fileType } as File, nextItem.data);
-        const taggedTxs = applyRulesToTransactions(extracted, rules).map(t => ({ ...t, documentId: nextItem.id }));
-        
-        if (db.isSupabaseConfigured()) {
-          await db.upsertTransactions(taggedTxs);
-          const refreshedTxs = await db.getTransactions();
-          setTransactions(refreshedTxs);
-        } else {
-          setTransactions(prev => [...prev, ...taggedTxs]);
-        }
-
-        setProcessingQueue(prev => prev.map(item => item.id === nextItem.id ? { ...item, status: 'completed', transactionCount: taggedTxs.length } : item));
-      } catch (error: any) {
-        setProcessingQueue(prev => prev.map(item => item.id === nextItem.id ? { ...item, status: 'error', message: error.message } : item));
-      } finally {
-        isProcessingRef.current = false;
-      }
+    const init = async () => {
+      await loadData();
+      setIsInitialized(true);
     };
+    init();
+  }, [loadData]);
 
-    processNext();
-  }, [processingQueue, rules, isAutoProcessing]);
+  useEffect(() => {
+    if (isInitialized) loadData(filters);
+  }, [filters, isInitialized, loadData]);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files) return;
-    const files = Array.from(event.target.files) as File[];
-    const newItems: ProcessingStatus[] = [];
-    for (const file of files) {
-      const base64Data = await readFileAsBase64(file);
-      newItems.push({
-        id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        fileName: file.name,
-        fileType: file.type,
-        data: base64Data,
-        status: 'pending'
-      });
+    if (!db.isSupabaseConfigured()) {
+      setIsDbConfigOpen(true);
+      return;
     }
-    setProcessingQueue(prev => [...prev, ...newItems]);
-    setIsAutoProcessing(true);
-    event.target.value = '';
+    const fileList = event.target.files;
+    if (!fileList) return;
+    const files = Array.from(fileList) as File[];
+    
+    trackEvent('upload_start', 'documents', 'files_count', files.length);
+    setActiveTab('documents');
+
+    const newStatuses: ProcessingStatus[] = files.map(file => ({
+      id: Math.random().toString(36).substring(2, 9),
+      fileName: file.name,
+      fileType: file.type,
+      data: '',
+      status: 'pending'
+    }));
+    setProcessingQueue(prev => [...prev, ...newStatuses]);
+
+    for (const status of newStatuses) {
+      const file = files.find(f => f.name === status.fileName);
+      if (!file) continue;
+      
+      setProcessingQueue(prev => prev.map(s => s.id === status.id ? { ...s, status: 'processing' } : s));
+      try {
+        const base64 = await readFileAsBase64(file);
+        const extracted = await parseDocumentWithGemini(file, base64);
+        
+        if (db.isSupabaseConfigured()) {
+          await db.upsertTransactions(extracted);
+          await loadData(filters);
+        } else {
+          setTransactions(prev => [...extracted, ...prev]);
+        }
+        
+        setProcessingQueue(prev => prev.map(s => s.id === status.id ? { ...s, status: 'completed', transactionCount: extracted.length } : s));
+        showToast(`Extracted ${extracted.length} records.`);
+        trackEvent('upload_complete', 'documents', file.name, extracted.length);
+      } catch (err) {
+        setProcessingQueue(prev => prev.map(s => s.id === status.id ? { ...s, status: 'error', message: err instanceof Error ? err.message : 'Failed' } : s));
+        trackEvent('upload_error', 'documents', file.name);
+      }
+    }
   };
 
-  const applyRulesToTransactions = (txs: Transaction[], currentRules: CategorizationRule[]) => {
-    const sorted = [...currentRules].sort((a, b) => b.keyword.length - a.keyword.length);
-    return txs.map(t => {
-      const match = sorted.find(r => t.description.toLowerCase().includes(r.keyword.toLowerCase()));
-      return match ? { ...t, category: match.targetCategory } : t;
-    });
+  const handleBulkUpdate = async (ids: string[], updates: Partial<Transaction>) => {
+    const targetTransactions = transactions.filter(t => ids.includes(t.id));
+    const updated = targetTransactions.map(t => ({ ...t, ...updates }));
+    
+    setTransactions(prev => prev.map(t => {
+      if (ids.includes(t.id)) return { ...t, ...updates };
+      return t;
+    }));
+
+    if (db.isSupabaseConfigured()) {
+      try {
+        await db.upsertTransactions(updated);
+        showToast(`Categorized ${ids.length} records.`);
+        trackEvent('bulk_update', 'transactions', 'categorize', ids.length);
+      } catch (err) {
+        showToast("Bulk update failed", 'error');
+        loadData(filters);
+      }
+    }
   };
 
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
-      if (filters.startDate && t.date < filters.startDate) return false;
-      if (filters.endDate && t.date > filters.endDate) return false;
-      if (filters.category && t.category !== filters.category) return false;
-      if (filters.search && !t.description.toLowerCase().includes(filters.search.toLowerCase())) return false;
-      return true;
-    });
-  }, [transactions, filters]);
-
-  const handleUpdateTransaction = async (updated: Transaction) => {
-    setTransactions(prev => prev.map(t => t.id === updated.id ? updated : t));
-    if (db.isSupabaseConfigured()) await db.upsertTransactions([updated]);
+  const handleBulkDelete = async (ids: string[]) => {
+    setTransactions(prev => prev.filter(t => !ids.includes(t.id)));
+    if (db.isSupabaseConfigured()) {
+      try {
+        await db.deleteTransactions(ids);
+        showToast(`Purged ${ids.length} records.`);
+        trackEvent('bulk_delete', 'transactions', 'delete', ids.length);
+        loadData(filters);
+      } catch (err) {
+        showToast("Deletion failed", 'error');
+        loadData(filters);
+      }
+    }
   };
 
-  const handleDeleteTransaction = async (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
-    if (db.isSupabaseConfigured()) await db.deleteTransaction(id);
-  };
-
-  const handleAddRule = async (rule: CategorizationRule) => {
-    setRules(prev => [...prev, rule]);
-    if (db.isSupabaseConfigured()) await db.upsertRule(rule);
-  };
-
-  const handleRemoveRule = async (id: string) => {
-    setRules(prev => prev.filter(r => r.id !== id));
-    if (db.isSupabaseConfigured()) await db.deleteRule(id);
+  const handleCreateRuleFromTable = async (keyword: string, categoryId: string) => {
+    const cat = categories.find(c => c.id === categoryId);
+    if (!cat) {
+      showToast("Select a category first.", 'error');
+      return;
+    }
+    const cleanKeyword = keyword.split(' ').slice(0, 2).join(' ').replace(/[*#]/g, '').trim();
+    const newRule: CategorizationRule = {
+      id: `rule-${Date.now()}`,
+      keyword: cleanKeyword,
+      targetCategory: cat.name,
+      targetCategoryId: cat.id
+    };
+    
+    setRules(prev => [...prev, newRule]);
+    trackEvent('create_rule', 'automation', cleanKeyword);
+    
+    if (db.isSupabaseConfigured()) {
+       try {
+         await db.upsertRule(newRule);
+         showToast("Rule created and synced.");
+       } catch (err) {
+         showToast("Rule sync failed", "error");
+       }
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-20 relative">
-      <CategoryManager isOpen={isCategoryManagerOpen} onClose={() => setIsCategoryManagerOpen(false)} categories={categories} onAdd={c => setCategories(prev => [...prev, c].sort())} onRename={(o, n) => setCategories(prev => prev.map(c => c === o ? n : c).sort())} onDelete={c => setCategories(prev => prev.filter(cat => cat !== c))} />
-      
-      {isConnectModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-8 w-full max-w-md animate-scale-up shadow-2xl">
-            <div className="flex justify-between items-start mb-6">
-              <h3 className="text-xl font-bold flex items-center gap-3"><Shield className="w-6 h-6 text-indigo-600" /> Supabase Connection</h3>
-              <button onClick={() => setIsConnectModalOpen(false)} className="p-1 hover:bg-slate-100 rounded-full"><X className="w-5 h-5 text-slate-400" /></button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Project URL</label>
-                <input type="text" className="w-full border border-slate-200 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-100" placeholder="https://xyz.supabase.co" value={sbUrl} onChange={e => setSbUrl(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Anon Public Key</label>
-                <input type="password" className="w-full border border-slate-200 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-100" placeholder="eyJhbGc..." value={sbKey} onChange={e => setSbKey(e.target.value)} />
-              </div>
-            </div>
-            <button 
-              onClick={() => db.saveConfig(sbUrl, sbKey)}
-              className="mt-8 w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg shadow-indigo-100"
-            >
-              Connect & Refresh
-            </button>
+    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row overflow-hidden">
+      {/* Desktop Sidebar (Left) */}
+      <nav className="hidden lg:flex flex-col w-72 bg-slate-900 text-white p-8 shrink-0">
+        <div className="flex items-center gap-3 mb-12">
+          <div className="bg-indigo-600 p-2 rounded-2xl shadow-lg shadow-indigo-500/20">
+            <Shield className="w-6 h-6" />
           </div>
+          <span className="text-2xl font-black tracking-tighter">CIPHER</span>
         </div>
-      )}
 
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm print:hidden">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2">
-              <div className="bg-blue-600 p-1.5 rounded-lg"><FileText className="w-4 h-4 text-white" /></div>
-              <h1 className="text-lg font-bold text-slate-800 tracking-tight">Cipher</h1>
-            </div>
-            <button 
-              onClick={() => setIsConnectModalOpen(true)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-tighter transition ${db.isSupabaseConfigured() ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'}`}
+        <div className="space-y-2">
+          {navItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-all ${
+                activeTab === item.id ? 'bg-indigo-600 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
             >
-              <Database className="w-3.5 h-3.5" />
-              {db.isSupabaseConfigured() ? 'Supabase Linked' : 'Link Supabase'}
+              <item.icon size={18} /> {item.label}
             </button>
-          </div>
-          <div className="flex items-center space-x-2">
-             <button onClick={() => window.aistudio.openSelectKey()} className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition" title="API Settings"><Key className="w-4 h-4" /></button>
-          </div>
+          ))}
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-sm font-black uppercase tracking-widest transition-all ${
+              activeTab === 'documents' ? 'bg-indigo-600 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <FilesIcon size={18} /> Documents
+          </button>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6 md:py-8 space-y-6">
-        {!isInitialized ? (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400"><Loader2 className="w-10 h-10 animate-spin mb-4" /><p>Connecting...</p></div>
-        ) : (
-          <>
-            <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:hidden">
-              <div className="lg:col-span-2">
-                <div className="bg-white p-6 md:p-8 rounded-2xl border-2 border-slate-200 border-dashed hover:border-blue-400 transition cursor-pointer relative group h-full flex flex-col items-center justify-center">
-                  <input type="file" multiple onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-full mb-3 group-hover:bg-blue-100 transition"><UploadCloud className="w-6 h-6" /></div>
-                  <h3 className="text-base font-semibold text-slate-700">Import Statements</h3>
-                  <p className="text-slate-500 text-xs">PDF or Images &rarr; Supabase DB</p>
+        <div className="mt-auto pt-8 border-t border-white/5 space-y-4">
+          <button 
+            onClick={() => setIsDbConfigOpen(true)}
+            className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+              !isConfigured ? 'bg-amber-500/10 text-amber-500 hover:bg-amber-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Database size={18} /> {isConfigured ? 'Vault Settings' : 'Sync Database'}
+          </button>
+          <button 
+            onClick={() => window.aistudio.openSelectKey()}
+            className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+          >
+            <Key size={18} /> API Key
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50 h-[100dvh] overflow-hidden relative">
+        
+        {/* Header - Visible on both but re-styled for mobile */}
+        <header className="h-20 bg-white border-b border-slate-100 flex items-center justify-between px-6 md:px-8 shrink-0 z-20">
+          <div className="flex items-center gap-2">
+            <Shield className="text-indigo-600 w-6 h-6 lg:hidden" />
+            <span className="font-black text-xl tracking-tighter lg:hidden">CIPHER</span>
+            <div className="hidden lg:flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100">
+                <Server className={`w-4 h-4 ${isConfigured ? 'text-indigo-500' : 'text-rose-500'}`} />
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                  {isConfigured ? `${totalDbCount} Records Synced` : 'Database Offline'}
+                </span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+             <label className="cursor-pointer bg-slate-900 text-white px-4 md:px-6 py-2.5 rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-widest shadow-xl shadow-slate-200 hover:bg-slate-800 transition active:scale-95 flex items-center gap-2">
+                <UploadCloud className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">Upload Statement</span>
+                <span className="sm:hidden">Upload</span>
+                <input type="file" multiple className="hidden" onChange={handleFileUpload} accept=".pdf,image/*" />
+             </label>
+             <button onClick={() => setIsDbConfigOpen(true)} className="lg:hidden p-2.5 bg-slate-50 text-slate-400 rounded-xl border border-slate-100">
+               <Database className="w-5 h-5" />
+             </button>
+          </div>
+        </header>
+
+        {/* Scrollable Content Container */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 lg:pb-8">
+          {/* Prominent Call to Action if database is missing */}
+          {!isConfigured && activeTab !== 'report' && (
+            <div className="mb-6 bg-amber-50 border border-amber-200 p-6 rounded-[2rem] flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-amber-500/5 animate-fade-in">
+              <div className="flex items-center gap-4">
+                <div className="bg-amber-100 p-4 rounded-2xl">
+                  <AlertTriangle className="w-8 h-8 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-amber-900 tracking-tight">Sync Required</h3>
+                  <p className="text-amber-700/70 text-sm font-medium leading-tight">To generate a P&L for your bank interview, you must link your financial vault.</p>
                 </div>
               </div>
-              <div className="lg:col-span-1">
-                <RulesEngine rules={rules} categories={categories} onAddRule={handleAddRule} onRemoveRule={handleRemoveRule} onApplyRules={() => {}} />
-              </div>
-            </section>
-
-            <div className="flex space-x-1 bg-slate-200/50 p-1 rounded-xl w-fit shadow-inner print:hidden overflow-x-auto">
-              {[
-                { id: 'dashboard', label: 'Overview', icon: PieIcon },
-                { id: 'transactions', label: 'Transactions', icon: TableIcon },
-                { id: 'entities', label: 'Profiles', icon: Users },
-                { id: 'documents', label: 'Queue', icon: FilesIcon },
-                { id: 'pnl', label: 'P&L', icon: FileSpreadsheet },
-                { id: 'balance', label: 'Balance', icon: Wallet }
-              ].map((tab) => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all capitalize flex items-center whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                  <tab.icon className="w-3.5 h-3.5 mr-2" />
-                  {tab.label}
-                </button>
-              ))}
+              <button 
+                onClick={() => setIsDbConfigOpen(true)}
+                className="w-full md:w-auto bg-amber-600 text-white px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg hover:bg-amber-700 transition active:scale-95 flex items-center justify-center gap-2 shrink-0"
+              >
+                <Link className="w-4 h-4" />
+                Connect Now
+              </button>
             </div>
+          )}
 
-            <div className="min-h-[400px]">
-              {activeTab === 'dashboard' && <Dashboard transactions={filteredTransactions} />}
-              {activeTab === 'transactions' && <TransactionTable transactions={filteredTransactions} categories={categories} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} />}
-              {activeTab === 'entities' && <EntityProfiles transactions={transactions} profiles={profiles} onAddProfile={async p => { setProfiles(prev => [...prev, p]); if(db.isSupabaseConfigured()) await db.upsertProfile(p); }} onUpdateProfile={async p => { setProfiles(prev => prev.map(o => o.id === p.id ? p : o)); if(db.isSupabaseConfigured()) await db.upsertProfile(p); }} onDeleteProfile={async id => { setProfiles(prev => prev.filter(p => p.id !== id)); if(db.isSupabaseConfigured()) await db.deleteProfile(id); }} />}
-              {activeTab === 'pnl' && <ProfitLossStatement transactions={filteredTransactions} />}
-              {activeTab === 'balance' && <BalanceSheet transactions={filteredTransactions} adjustments={bsAdjustments} overrides={bsOverrides} onAddAdjustment={adj => setBsAdjustments(prev => [...prev, adj])} onRemoveAdjustment={id => setBsAdjustments(prev => prev.filter(a => a.id !== id))} onOverride={(cat, amount) => setBsOverrides(prev => ({...prev, [cat]: amount}))} />}
-              
-              {activeTab === 'documents' && (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                  <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
-                    <h3 className="text-sm font-bold">Processing Queue</h3>
-                    <button onClick={() => setProcessingQueue([])} className="text-[10px] font-black text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg hover:bg-slate-200">Clear All</button>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {processingQueue.length === 0 ? (
-                      <div className="p-20 text-center text-slate-400 text-xs italic">Queue is empty.</div>
-                    ) : (
-                      processingQueue.map(doc => (
-                        <div key={doc.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition">
-                          <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-lg ${doc.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                               <FileText className="w-4 h-4" />
-                            </div>
-                            <div>
-                               <p className="text-sm font-bold text-slate-800">{doc.fileName}</p>
-                               <p className="text-[10px] text-slate-400 uppercase font-black">{doc.status}</p>
-                            </div>
-                          </div>
-                          {doc.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
-                        </div>
-                      ))
+          {activeTab === 'dashboard' && <Dashboard transactions={transactions} />}
+          
+          {activeTab === 'transactions' && (
+            <div className="space-y-6">
+              <FilterBar 
+                filters={filters} 
+                categories={categories} 
+                onFilterChange={setFilters} 
+                onClear={() => setFilters({startDate: '', endDate: '', category: '', minAmount: '', maxAmount: '', search: ''})} 
+                onOpenCategoryManager={() => setIsCategoryManagerOpen(true)}
+                totalCount={totalDbCount}
+                filteredCount={transactions.length}
+                isLoading={isFetching}
+              />
+              <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+                <div className="xl:col-span-3">
+                  <TransactionTable 
+                    transactions={transactions} 
+                    categories={categories} 
+                    onUpdateTransaction={async (t) => {
+                      setTransactions(prev => prev.map(old => old.id === t.id ? t : old));
+                      trackEvent('categorize', 'ledger', t.category);
+                      if (db.isSupabaseConfigured()) await db.upsertTransactions([t]);
+                    }} 
+                    onDeleteTransaction={async (id) => {
+                      setTransactions(prev => prev.filter(t => t.id !== id));
+                      trackEvent('delete_record', 'ledger');
+                      if (db.isSupabaseConfigured()) {
+                        await db.deleteTransaction(id);
+                        showToast("Transaction deleted.");
+                      }
+                    }}
+                    onBulkUpdate={handleBulkUpdate}
+                    onBulkDelete={handleBulkDelete}
+                    onCreateRule={handleCreateRuleFromTable}
+                  />
+                </div>
+                <div className="xl:col-span-1">
+                  <RulesEngine 
+                    rules={rules} 
+                    categories={categories} 
+                    transactions={transactions}
+                    onAddRule={async (r) => {
+                      setRules(prev => [...prev, r]);
+                      trackEvent('create_rule', 'automation', r.keyword);
+                      if (db.isSupabaseConfigured()) await db.upsertRule(r);
+                    }}
+                    onRemoveRule={async (id) => {
+                      setRules(prev => prev.filter(r => r.id !== id));
+                      trackEvent('delete_rule', 'automation');
+                      if (db.isSupabaseConfigured()) {
+                        await db.deleteRule(id);
+                        showToast("Rule removed.");
+                      }
+                    }}
+                    onApplyRules={() => loadData(filters)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'entities' && (
+            <EntityProfiles 
+              transactions={transactions}
+              profiles={profiles}
+              categories={categories}
+              onAddProfile={async (p) => {
+                const created = await db.upsertProfile(p);
+                if (created) {
+                  setProfiles(prev => [...prev, created]);
+                  trackEvent('create_profile', 'directory', created.name);
+                }
+                return created;
+              }}
+              onUpdateProfile={async (p) => {
+                const updated = await db.upsertProfile(p);
+                if (updated) {
+                  setProfiles(prev => prev.map(old => old.id === updated.id ? updated : old));
+                  trackEvent('update_profile', 'directory', updated.name);
+                }
+                return updated;
+              }}
+              onDeleteProfile={async (id) => {
+                if (db.isSupabaseConfigured()) {
+                  await db.deleteProfile(id);
+                  setProfiles(prev => prev.filter(p => p.id !== id));
+                  trackEvent('delete_profile', 'directory');
+                  showToast("Profile removed from vault.");
+                }
+              }}
+              onRefreshData={() => loadData(filters)}
+            />
+          )}
+
+          {activeTab === 'report' && (
+            <FinancialReport 
+              transactions={transactions}
+              bsAdjustments={bsAdjustments}
+              bsOverrides={bsOverrides}
+              onAddAdjustment={(a) => setBsAdjustments([...bsAdjustments, a])}
+              onRemoveAdjustment={(id) => setBsAdjustments(bsAdjustments.filter(a => a.id !== id))}
+              onOverride={(cat, val) => setBsOverrides(prev => ({ ...prev, [cat]: val as number }))}
+            />
+          )}
+
+          {activeTab === 'documents' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {processingQueue.length === 0 ? (
+                <div className="col-span-full py-24 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100">
+                  <FilesIcon className="w-16 h-16 text-slate-100 mb-4" />
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No active extractions</p>
+                </div>
+              ) : (
+                processingQueue.map(status => (
+                  <div key={status.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className={`p-3 rounded-2xl ${
+                        status.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 
+                        status.status === 'error' ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'
+                      }`}>
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                         status.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'
+                      }`}>
+                        {status.status}
+                      </span>
+                    </div>
+                    <h4 className="font-black text-slate-800 truncate mb-1 text-sm">{status.fileName}</h4>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">{status.transactionCount || 0} Records Parsed</p>
+                    
+                    {status.status === 'processing' && (
+                      <div className="w-full bg-slate-50 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-indigo-500 h-full animate-progress-indefinite" />
+                      </div>
                     )}
                   </div>
-                </div>
+                ))
               )}
             </div>
-          </>
-        )}
+          )}
+        </div>
+
+        {/* Mobile Bottom Navigation Bar */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-4 py-3 pb-8 flex justify-around items-center z-50 shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
+          {navItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as any)}
+              className={`flex flex-col items-center gap-1 transition-all ${
+                activeTab === item.id ? 'text-indigo-600' : 'text-slate-400'
+              }`}
+            >
+              <item.icon size={22} className={activeTab === item.id ? 'scale-110' : ''} />
+              <span className={`text-[10px] font-black uppercase tracking-tighter ${activeTab === item.id ? 'opacity-100' : 'opacity-60'}`}>
+                {item.label}
+              </span>
+            </button>
+          ))}
+          <button
+              onClick={() => setActiveTab('documents')}
+              className={`flex flex-col items-center gap-1 transition-all ${
+                activeTab === 'documents' ? 'text-indigo-600' : 'text-slate-400'
+              }`}
+            >
+              <FilesIcon size={22} className={activeTab === 'documents' ? 'scale-110' : ''} />
+              <span className={`text-[10px] font-black uppercase tracking-tighter ${activeTab === 'documents' ? 'opacity-100' : 'opacity-60'}`}>
+                Docs
+              </span>
+            </button>
+        </nav>
       </main>
+
+      {/* Overlays & Modals */}
+      <CategoryManager 
+        isOpen={isCategoryManagerOpen} 
+        onClose={() => setIsCategoryManagerOpen(false)}
+        categories={categories}
+        onAdd={async (name) => {
+          if (db.isSupabaseConfigured()) {
+            await db.upsertCategory(name);
+            showToast(`Added ${name}.`);
+          }
+          trackEvent('create_category', 'settings', name);
+          loadData(filters);
+        }}
+        onRename={async (old, next) => {
+          if (db.isSupabaseConfigured()) {
+            await db.bulkUpdateTransactionCategory(old, next);
+            showToast(`Renamed to ${next}.`);
+          }
+          trackEvent('rename_category', 'settings', next);
+          loadData(filters);
+        }}
+        onDelete={async (name) => {
+          if (db.isSupabaseConfigured()) {
+            await db.deleteCategory(name);
+            showToast(`Deleted ${name}.`);
+          }
+          trackEvent('delete_category', 'settings', name);
+          loadData(filters);
+        }}
+      />
+      
+      <DatabaseConfigModal 
+        isOpen={isDbConfigOpen} 
+        onClose={() => setIsDbConfigOpen(false)} 
+        onSuccess={() => loadData(filters)} 
+      />
+
+      {toast && (
+        <div className={`fixed bottom-24 lg:bottom-10 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl animate-slide-up border ${
+          toast.type === 'success' ? 'bg-slate-900 text-white border-white/10' : 'bg-rose-600 text-white border-rose-400'
+        }`}>
+          {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <X className="w-5 h-5" />}
+          <span className="text-sm font-black uppercase tracking-tight">{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }
-
-export default App;
