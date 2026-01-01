@@ -59,7 +59,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   }, [localSearch, localMin, localMax, filters, onFilterChange]);
 
   const hasActiveFilters = Object.values(filters).some(v => v !== '');
-  const inputBase = "w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:opacity-50";
+  const inputBase = "w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:opacity-50 placeholder:text-slate-400";
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden mb-6 relative">
@@ -126,7 +126,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
             <div className="md:col-span-3">
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <select className={`${inputBase} appearance-none pr-10`} value={filters.category} onChange={(e) => handleImmediate('category', e.target.value)} disabled={isLoading}>
+                  <select className={`${inputBase} appearance-none pr-10 cursor-pointer`} value={filters.category} onChange={(e) => handleImmediate('category', e.target.value)} disabled={isLoading}>
                     <option value="">All Accounts</option>
                     {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                   </select>

@@ -4,9 +4,11 @@ import { Transaction, TransactionType, DEFAULT_CATEGORIES } from "../types";
 
 const categoriesStr = DEFAULT_CATEGORIES.join(", ");
 
-const SYSTEM_INSTRUCTION = `Expert analyst. Extract transactions from docs to JSON. 
+const SYSTEM_INSTRUCTION = `Expert financial analyst. Extract transactions from bank statements/receipts to JSON. 
 Date (YYYY-MM-DD), Description, Amount (positive), Type (income/expense). 
-Categories ONLY from: [${categoriesStr}]. Guess logically (e.g., Starbucks=Meals).`;
+Categories ONLY from: [${categoriesStr}]. 
+
+CRITICAL: If a transaction looks like a significant asset purchase (e.g., "New Computer", "Truck", "Machinery") or a loan/debt activity (e.g., "SBA Loan", "Mortgage Pay"), categorize it into the most specific Asset or Liability category available. Guess logically based on typical business operations.`;
 
 const RESPONSE_SCHEMA = {
   type: Type.ARRAY,
@@ -25,10 +27,6 @@ const RESPONSE_SCHEMA = {
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-/**
- * Enhanced wrapper that handles retries for rate limits.
- * Adheres to guidelines by using process.env.API_KEY exclusively and directly.
- */
 async function withRetry<T>(fn: () => Promise<T>, retries = 2, baseDelay = 3000): Promise<T> {
   try {
     return await fn();
@@ -41,7 +39,6 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2, baseDelay = 3000)
       return withRetry(fn, retries - 1, baseDelay * 2);
     }
     
-    // Check for specific error to log key selection issue if billing/project is missing
     if (errorMsg.includes("requested entity was not found")) {
       console.error("Cipher Finance: API key selection issue or project configuration error.");
     }
@@ -71,7 +68,6 @@ export const parseDocumentWithGemini = async (
   base64Data: string
 ): Promise<Transaction[]> => {
   return withRetry(async () => {
-    // Create new GoogleGenAI instance right before making an API call to ensure it uses the up-to-date key.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const mimeType = file.type || 'image/jpeg';
     
@@ -110,22 +106,20 @@ export const autoFillProfileData = async (entityName: string): Promise<{
   description: string;
   type: 'VENDOR' | 'CLIENT';
   tags: string[];
-  keywordMatch: string;
+  keywords: string[];
   defaultCategory: string;
   sources: { title: string; uri: string }[];
 }> => {
   return withRetry(async () => {
-    // Create new GoogleGenAI instance right before making an API call.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Using gemini-3-flash-preview for search grounding.
     const searchResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Search for information about "${entityName}". Determine:
       1. What the business does.
       2. If they are a VENDOR or CLIENT.
       3. 3-4 industry tags.
-      4. Bank statement keyword.
+      4. 3 distinct keywords or variations found in bank statement descriptions (e.g. for "Amazon", include "AMZN", "Amzn Mktp", "Amazon.com").
       5. Which of these categories fits them best: [${categoriesStr}]`,
       config: {
         tools: [{ googleSearch: {} }],
@@ -153,10 +147,10 @@ export const autoFillProfileData = async (entityName: string): Promise<{
             description: { type: Type.STRING },
             type: { type: Type.STRING },
             tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-            keywordMatch: { type: Type.STRING },
+            keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
             defaultCategory: { type: Type.STRING },
           },
-          required: ["description", "type", "tags", "keywordMatch", "defaultCategory"]
+          required: ["description", "type", "tags", "keywords", "defaultCategory"]
         }
       },
     });
@@ -166,7 +160,7 @@ export const autoFillProfileData = async (entityName: string): Promise<{
       description: data.description || "",
       type: data.type === 'CLIENT' ? 'CLIENT' : 'VENDOR',
       tags: data.tags || [],
-      keywordMatch: data.keywordMatch || entityName,
+      keywords: data.keywords || [entityName],
       defaultCategory: data.defaultCategory || "Uncategorized",
       sources
     };
@@ -175,7 +169,6 @@ export const autoFillProfileData = async (entityName: string): Promise<{
 
 export const generateFinancialNarrative = async (summary: any): Promise<string> => {
   return withRetry(async () => {
-    // Create new GoogleGenAI instance right before making an API call.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `As a financial analyst, write a Management Discussion and Analysis (MD&A) for a business with the following summary:
     Total Income: $${summary.totalIncome.toFixed(2)}

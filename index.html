@@ -15,6 +15,8 @@
         send_page_view: false // We handle page views manually in App.tsx for SPAs
       });
     </script>
+    <!-- HTML2PDF for client-side PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- Shim 'process' immediately to prevent ESM modules from crashing -->
     <script>
       window.process = window.process || {};
@@ -26,6 +28,8 @@
       body {
         font-family: 'Inter', sans-serif;
         background-color: #f3f4f6;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
       @media print {
         .print\:hidden {
@@ -37,9 +41,13 @@
         main {
           padding: 0 !important;
           margin: 0 !important;
+          height: auto !important;
+          overflow: visible !important;
         }
-        .max-w-7xl {
+        .max-w-7xl, .max-w-5xl, .max-w-4xl {
           max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
         }
       }
       @keyframes progress-indefinite {
@@ -55,6 +63,13 @@
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-scale-up {
+        animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      @keyframes scaleUp {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
       }
       .animate-slide-up {
         animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;

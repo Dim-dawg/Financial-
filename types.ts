@@ -4,9 +4,23 @@ export enum TransactionType {
   EXPENSE = 'expense',
 }
 
+export enum AccountType {
+  INCOME = 'INCOME',
+  EXPENSE = 'EXPENSE',
+  CURRENT_ASSET = 'CURRENT_ASSET',
+  FIXED_ASSET = 'FIXED_ASSET',
+  CURRENT_LIABILITY = 'CURRENT_LIABILITY',
+  LONG_TERM_LIAB = 'LONG_TERM_LIAB',
+  EQUITY = 'EQUITY',
+  // Deprecated generic types for backward compatibility logic
+  ASSET = 'ASSET',
+  LIABILITY = 'LIABILITY',
+}
+
 export interface Category {
   id: string;
   name: string;
+  accountType?: AccountType;
 }
 
 export interface Transaction {
@@ -29,10 +43,10 @@ export interface EntityProfile {
   type: 'VENDOR' | 'CLIENT';
   description: string;
   tags: string[];
-  keywordMatch: string;
+  keywords: string[];
   defaultCategoryId?: string;
-  // Add defaultCategory name for UI and automation resolution
   defaultCategory?: string;
+  sources?: { title: string; uri: string }[];
 }
 
 export interface CategorizationRule {
@@ -90,4 +104,8 @@ export const DEFAULT_CATEGORIES = [
   'Insurance',
   'Repairs & Maintenance',
   'Uncategorized',
+  'Equipment Purchase',
+  'Vehicle Loan Payment',
+  'Business Loan',
+  'Computer Hardware',
 ];

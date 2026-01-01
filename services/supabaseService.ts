@@ -78,30 +78,45 @@ export const getTransactions = async (filters?: TransactionFilter): Promise<Tran
   let hasMore = true;
 
   while (hasMore) {
+    // IMPORTANT: When filtering by a related table (category), we MUST use !inner join.
+    // We try to select category name via join, but handle failures gracefully if possible.
+    const isCategoryFilter = filters?.category && filters.category !== '';
+    const selectStr = isCategoryFilter 
+        ? '*, categories!inner(id, name), profiles(id, name)' 
+        : '*, categories(id, name), profiles(id, name)';
+
     let query = client
       .from('transactions')
-      .select('*, categories(id, name), profiles(id, name)')
+      .select(selectStr)
       .range(from, from + PAGE_SIZE - 1)
       .order('date', { ascending: false });
 
     if (filters) {
       if (filters.startDate) query = query.gte('date', filters.startDate);
       if (filters.endDate) query = query.lte('date', filters.endDate);
-      if (filters.category && filters.category !== '') {
-        query = query.filter('categories.name', 'eq', filters.category);
+      
+      if (isCategoryFilter) {
+        query = query.eq('categories.name', filters.category);
       }
+      
       if (filters.search?.trim()) query = query.ilike('description', `%${filters.search.trim()}%`);
       if (filters.minAmount !== '') query = query.gte('amount', parseFloat(filters.minAmount));
       if (filters.maxAmount !== '') query = query.lte('amount', parseFloat(filters.maxAmount));
     }
 
     const { data, error } = await query;
-    if (error) break;
+    if (error) {
+      console.error("Query Error:", error);
+      break;
+    }
+    
     if (data && data.length > 0) {
       allData = [...allData, ...data];
       hasMore = data.length === PAGE_SIZE;
       from += PAGE_SIZE;
-    } else hasMore = false;
+    } else {
+      hasMore = false;
+    }
   }
 
   return allData.map(t => ({
@@ -168,125 +183,187 @@ export const deleteTransactions = async (ids: string[]) => {
 export const getProfiles = async (): Promise<EntityProfile[]> => {
   const client = getSupabaseClient();
   if (!client) return [];
-  const { data } = await client.from('profiles').select('*, categories(name)');
-  return (data || []).map(p => ({
-    id: p.id,
-    name: String(p.name || ''),
-    type: (p.type?.toUpperCase() === 'CLIENT' ? 'CLIENT' : 'VENDOR') as 'VENDOR' | 'CLIENT',
-    description: String(p.notes || ''),
-    tags: p.address?.split('|')[0]?.split(',') || [], 
-    keywordMatch: p.address?.split('|')[1] || p.name,
-    defaultCategoryId: p.default_category_id,
-    defaultCategory: safeExtract(p.categories, 'name') || 'Uncategorized'
-  }));
+  
+  // NOTE: We do not join 'categories' here because the user schema might lack 'category_id' on profiles.
+  // We rely on the 'address' field hack for storage and client-side ID lookup for names.
+  const { data } = await client.from('profiles').select('*');
+  
+  return (data || []).map(p => {
+    // Legacy support: We use 'address' field to store: tags|keywords|category_id
+    const packed = p.address || '';
+    const parts = packed.split('|');
+    const tags = parts[0] ? parts[0].split(',').filter((s: string) => s) : [];
+    const keywords = parts[1] ? parts[1].split(',').filter((s: string) => s) : [p.name];
+    const storedCatId = parts[2] || undefined;
+
+    return {
+      id: p.id,
+      name: String(p.name || ''),
+      type: (p.type?.toUpperCase() === 'CLIENT' ? 'CLIENT' : 'VENDOR') as 'VENDOR' | 'CLIENT',
+      description: String(p.notes || ''),
+      tags,
+      keywords,
+      defaultCategoryId: p.category_id || storedCatId, // Prefer real column if exists, else packed
+      defaultCategory: '', // Resolved in UI
+    };
+  });
 };
 
-export const upsertProfile = async (profile: Partial<EntityProfile>) => {
+export const upsertProfile = async (profile: EntityProfile): Promise<EntityProfile | null> => {
   const client = getSupabaseClient();
-  if (!client) return;
-  
-  const payload: any = { 
-    name: profile.name, 
-    type: profile.type?.toLowerCase(), 
-    notes: profile.description,
-    address: `${profile.tags?.join(',')}|${profile.keywordMatch}|${profile.defaultCategoryId}`,
-    default_category_id: profile.defaultCategoryId
-  };
-  
-  if (profile.id) payload.id = profile.id;
-  
-  const { data, error } = await client.from('profiles').upsert(payload, { onConflict: 'id' }).select('*, categories(name)');
-  if (error) throw error;
-  
-  const p = data?.[0];
-  if (!p) return null;
+  if (!client) return null;
 
+  // Pack tags, keywords, AND categoryId into address field: tags|keywords|catId
+  const tagsStr = (profile.tags || []).join(',');
+  const keywordsStr = (profile.keywords || []).join(',');
+  const catId = profile.defaultCategoryId || '';
+  const packedAddress = `${tagsStr}|${keywordsStr}|${catId}`;
+
+  const row = {
+    name: profile.name,
+    type: profile.type.toLowerCase(),
+    notes: profile.description,
+    address: packedAddress, 
+    // We DO NOT send category_id to DB to avoid "Column not found" error
+  };
+
+  let result;
+  
+  const isRealId = profile.id && !profile.id.startsWith('prof-');
+
+  if (isRealId) {
+    result = await client.from('profiles').update(row).eq('id', profile.id).select('*').single();
+  } else {
+    // Check for collision by name to avoid unique constraint errors
+    const { data: existing } = await client.from('profiles').select('id').eq('name', profile.name).maybeSingle();
+    
+    if (existing) {
+        result = await client.from('profiles').update(row).eq('id', existing.id).select('*').single();
+    } else {
+        result = await client.from('profiles').insert(row).select('*').single();
+    }
+  }
+
+  if (result.error || !result.data) {
+    console.error("Profile Upsert Error", JSON.stringify(result.error));
+    return null;
+  }
+
+  const p = result.data;
+  const parts = (p.address || '').split('|');
+  const storedCatId = parts[2] || undefined;
+  
   return {
     id: p.id,
-    name: String(p.name || ''),
-    type: (p.type?.toUpperCase() === 'CLIENT' ? 'CLIENT' : 'VENDOR') as 'VENDOR' | 'CLIENT',
-    description: String(p.notes || ''),
-    tags: p.address?.split('|')[0]?.split(',') || [], 
-    keywordMatch: p.address?.split('|')[1] || p.name,
-    defaultCategoryId: p.default_category_id,
-    defaultCategory: safeExtract(p.categories, 'name') || 'Uncategorized'
+    name: p.name,
+    type: (p.type?.toUpperCase() === 'CLIENT' ? 'CLIENT' : 'VENDOR'),
+    description: p.notes,
+    tags: parts[0] ? parts[0].split(',') : [],
+    keywords: parts[1] ? parts[1].split(',') : [p.name],
+    defaultCategoryId: p.category_id || storedCatId,
+    defaultCategory: '', 
   };
 };
 
 export const deleteProfile = async (id: string) => {
   const client = getSupabaseClient();
   if (!client) return;
-  // Nullify transactions first to avoid constraint issues
+  // First unlink transactions
   await client.from('transactions').update({ profile_id: null }).eq('profile_id', id);
-  const { error } = await client.from('profiles').delete().eq('id', id);
-  if (error) throw error;
+  // Then delete profile
+  await client.from('profiles').delete().eq('id', id);
 };
 
-export const bulkApplyProfileRule = async (keyword: string, profileId: string, categoryId: string) => {
+export const bulkApplyProfileRule = async (keywords: string[], profileId: string, categoryId: string) => {
   const client = getSupabaseClient();
-  if (!client) return;
-  const { error } = await client.from('transactions')
-    .update({ profile_id: profileId, category_id: categoryId })
-    .ilike('description', `%${keyword}%`);
-  if (error) throw error;
+  if (!client || !keywords || keywords.length === 0) return;
+
+  // 1. Get all transactions that don't have a profile assigned
+  const { data: unassigned, error } = await client
+    .from('transactions')
+    .select('id, description')
+    .is('profile_id', null);
+
+  if (error || !unassigned || unassigned.length === 0) return;
+
+  // 2. Client-side matching to support "Longest Match Priority"
+  const sortedKeywords = [...keywords].sort((a, b) => b.length - a.length);
+  const matchedIds: string[] = [];
+
+  unassigned.forEach(t => {
+    const desc = (t.description || '').toLowerCase();
+    const isMatch = sortedKeywords.some(k => desc.includes(k.toLowerCase()));
+    if (isMatch) {
+      matchedIds.push(t.id);
+    }
+  });
+
+  if (matchedIds.length === 0) return;
+
+  // 3. Update matches in chunks
+  const chunkSize = 500;
+  for (let i = 0; i < matchedIds.length; i += chunkSize) {
+    const chunk = matchedIds.slice(i, i + chunkSize);
+    // Transactions table DOES have category_id, so we can update it safely here
+    await client
+      .from('transactions')
+      .update({ profile_id: profileId, category_id: categoryId })
+      .in('id', chunk);
+  }
 };
 
-export const getRules = async () => {
+export const getRules = async (): Promise<CategorizationRule[]> => {
   const client = getSupabaseClient();
   if (!client) return [];
   const { data } = await client.from('rules').select('*, categories(name)');
-  return (data || []).map(r => ({ 
-    id: r.id, 
-    keyword: r.keyword, 
-    targetCategory: safeExtract(r.categories, 'name') || 'Uncategorized',
-    targetCategoryId: r.category_id
+  return (data || []).map(r => ({
+    id: r.id,
+    keyword: r.keyword,
+    targetCategory: safeExtract(r.categories, 'name'),
+    targetCategoryId: r.target_category,
+    targetType: r.target_type ? r.target_type.toUpperCase() as TransactionType : undefined
   }));
-};
-
-export const upsertRule = async (rule: CategorizationRule) => {
-  const client = getSupabaseClient();
-  if (!client) return;
-  const payload: any = { keyword: rule.keyword, category_id: rule.targetCategoryId };
-  if (rule.id && !rule.id.startsWith('rule-')) payload.id = rule.id;
-  const { error } = await client.from('rules').upsert(payload, { onConflict: 'keyword' });
-  if (error) throw error;
-};
-
-export const deleteRule = async (id: string) => {
-  const client = getSupabaseClient();
-  if (!client) return;
-  const { error } = await client.from('rules').delete().eq('id', id);
-  if (error) throw error;
 };
 
 export const getCategories = async (): Promise<Category[]> => {
   const client = getSupabaseClient();
   if (!client) return [];
-  const { data } = await client.from('categories').select('id, name').order('name');
-  return data || [];
+  const { data } = await client.from('categories').select('*').order('name');
+  return (data || []).map(c => ({
+    id: c.id,
+    name: c.name,
+    accountType: c.account_type 
+  }));
 };
 
 export const upsertCategory = async (name: string) => {
   const client = getSupabaseClient();
   if (!client) return;
-  const { error } = await client.from('categories').upsert({ name }, { onConflict: 'name' });
-  if (error) throw error;
+  await client.from('categories').upsert({ name }, { onConflict: 'name' });
 };
 
 export const deleteCategory = async (name: string) => {
   const client = getSupabaseClient();
   if (!client) return;
-  const { error } = await client.from('categories').delete().eq('name', name);
-  if (error) throw error;
+  const { data } = await client.from('categories').select('id').eq('name', name).single();
+  if (data) {
+     await client.from('transactions').update({ category_id: null }).eq('category_id', data.id);
+     await client.from('categories').delete().eq('id', data.id);
+  }
 };
 
 export const bulkUpdateTransactionCategory = async (oldName: string, newName: string) => {
-  const client = getSupabaseClient();
-  if (!client) return;
-  const { data: oldCat } = await client.from('categories').select('id').eq('name', oldName).maybeSingle();
-  const { data: newCat } = await client.from('categories').select('id').eq('name', newName).maybeSingle();
-  if (oldCat && newCat) {
-    const { error } = await client.from('transactions').update({ category_id: newCat.id }).eq('category_id', oldCat.id);
-    if (error) throw error;
-  }
+    const client = getSupabaseClient();
+    if(!client) return;
+    
+    // 1. Ensure new category exists
+    const { data: newCat } = await client.from('categories').upsert({ name: newName }, { onConflict: 'name' }).select('id').single();
+    if (!newCat) return;
+
+    // 2. Find old category ID
+    const { data: oldCat } = await client.from('categories').select('id').eq('name', oldName).single();
+    if (!oldCat) return;
+
+    // 3. Move transactions
+    await client.from('transactions').update({ category_id: newCat.id }).eq('category_id', oldCat.id);
 };

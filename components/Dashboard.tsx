@@ -12,6 +12,7 @@ interface DashboardProps {
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
   
@@ -57,20 +58,26 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
     const data: Record<string, { month: string; income: number; expense: number; sortKey: string }> = {};
     
     transactions.forEach(t => {
-      const date = new Date(t.date);
-      if (isNaN(date.getTime())) return;
+      if (!t.date) return;
       
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(date);
-
-      if (!data[key]) {
-        data[key] = { month: monthLabel, income: 0, expense: 0, sortKey: key };
+      // Use string slicing YYYY-MM to avoid timezone shifts affecting the month bucket
+      const monthKey = t.date.substring(0, 7); // "2023-12"
+      
+      if (!data[monthKey]) {
+        // Create label manually to avoid any Date object timezone shifts
+        const [year, month] = monthKey.split('-');
+        const monthIndex = parseInt(month) - 1;
+        const monthLabel = (monthIndex >= 0 && monthIndex < 12) 
+          ? `${MONTHS[monthIndex]} '${year.slice(2)}`
+          : monthKey;
+        
+        data[monthKey] = { month: monthLabel, income: 0, expense: 0, sortKey: monthKey };
       }
 
       if (t.type === TransactionType.INCOME) {
-        data[key].income += t.amount;
+        data[monthKey].income += t.amount;
       } else {
-        data[key].expense += t.amount;
+        data[monthKey].expense += t.amount;
       }
     });
 
@@ -158,8 +165,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
                 formatter={(value: number) => [`$${new Intl.NumberFormat('en-US').format(value)}`, '']}
                 contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}
               />
+              <Legend verticalAlign="top" height={36} iconType="circle" />
               <Line type="monotone" dataKey="income" name="Income" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
-              <Line type="monotone" dataKey="expense" name="Expenses" stroke="#94a3b8" strokeWidth={2} dot={false} strokeDasharray="5 5" />
+              <Line type="monotone" dataKey="expense" name="Expenses" stroke="#ef4444" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -224,3 +232,4 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions }) => {
 };
 
 export default Dashboard;
+    
