@@ -5,8 +5,9 @@ import {
   Trash2, Calendar, Tag, ArrowUpRight, ArrowDownLeft, 
   Loader2, CheckSquare, ChevronUp, ChevronDown,
   ArrowUpDown, X, Building, Link2, Search, ChevronLeft, ChevronRight,
-  UserPlus, CheckCircle2
+  UserPlus, CheckCircle2, Sparkles
 } from 'lucide-react';
+import SimilarTransactionsModal from './SimilarTransactionsModal';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -15,6 +16,7 @@ interface TransactionTableProps {
   onUpdateTransaction: (updated: Transaction) => Promise<void> | void;
   onDeleteTransaction: (id: string) => void;
   onBulkUpdate?: (ids: string[], updates: Partial<Transaction>) => Promise<void>;
+  onBulkUpload?: (transactions: Transaction[]) => Promise<void>;
   onCreateProfile?: (profile: EntityProfile) => Promise<EntityProfile | null>;
 }
 
@@ -42,9 +44,26 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+  // Similar modal state
+  const [modalBaseTx, setModalBaseTx] = useState<Transaction | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+
+  const openSimilarModal = (t: Transaction) => {
+    setModalBaseTx(t);
+    setIsModalOpen(true);
+  };
+
+  const handleModalApply = async (ids: string[], updates: Partial<Transaction>) => {
+    if (onBulkUpdate) await onBulkUpdate(ids, updates);
+  };
+
+  const handleModalUpload = async (txs: Transaction[]) => {
+    if (onBulkUpload) await onBulkUpload(txs);
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -372,7 +391,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         {isSaving && <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-500 mt-1" />}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 flex items-center gap-2">
+                      <button onClick={() => openSimilarModal(t)} title="Find Similar" className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all">
+                        <Sparkles size={16} />
+                      </button>
                       <button onClick={() => onDeleteTransaction(t.id)} className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
                         <Trash2 size={16} />
                       </button>
@@ -391,6 +413,20 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         </div>
       </div>
       
+      {/* Similar Modal */}
+      {isModalOpen && modalBaseTx && (
+        <SimilarTransactionsModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          base={modalBaseTx}
+          transactions={transactions}
+          profiles={profiles}
+          categories={categories}
+          onApply={handleModalApply}
+          onUpload={handleModalUpload}
+        />
+      )}
+
       {/* Pagination Controls - Bottom */}
       {totalPages > 1 && (
         <div className="flex justify-center pb-8">

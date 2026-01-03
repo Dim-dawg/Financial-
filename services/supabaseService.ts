@@ -2,8 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { Transaction, CategorizationRule, EntityProfile, TransactionType, TransactionFilter, Category } from '../types';
 
-const SUPABASE_URL = () => localStorage.getItem('cf_supabase_url') || '';
-const SUPABASE_ANON_KEY = () => localStorage.getItem('cf_supabase_key') || '';
+const SUPABASE_URL = () => localStorage.getItem('cf_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = () => localStorage.getItem('cf_supabase_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = () => !!SUPABASE_URL() && !!SUPABASE_ANON_KEY();
 
@@ -111,7 +111,7 @@ export const getTransactions = async (filters?: TransactionFilter): Promise<Tran
     }
     
     if (data && data.length > 0) {
-      allData = [...allData, ...data];
+      allData.push(...data);
       hasMore = data.length === PAGE_SIZE;
       from += PAGE_SIZE;
     } else {
@@ -184,47 +184,31 @@ export const getProfiles = async (): Promise<EntityProfile[]> => {
   const client = getSupabaseClient();
   if (!client) return [];
   
-  // NOTE: We do not join 'categories' here because the user schema might lack 'category_id' on profiles.
-  // We rely on the 'address' field hack for storage and client-side ID lookup for names.
   const { data } = await client.from('profiles').select('*');
   
-  return (data || []).map(p => {
-    // Legacy support: We use 'address' field to store: tags|keywords|category_id
-    const packed = p.address || '';
-    const parts = packed.split('|');
-    const tags = parts[0] ? parts[0].split(',').filter((s: string) => s) : [];
-    const keywords = parts[1] ? parts[1].split(',').filter((s: string) => s) : [p.name];
-    const storedCatId = parts[2] || undefined;
-
-    return {
-      id: p.id,
-      name: String(p.name || ''),
-      type: (p.type?.toUpperCase() === 'CLIENT' ? 'CLIENT' : 'VENDOR') as 'VENDOR' | 'CLIENT',
-      description: String(p.notes || ''),
-      tags,
-      keywords,
-      defaultCategoryId: p.category_id || storedCatId, // Prefer real column if exists, else packed
-      defaultCategory: '', // Resolved in UI
-    };
-  });
+  return (data || []).map(p => ({
+    id: p.id,
+    name: String(p.name || ''),
+    type: (p.type?.toUpperCase() === 'CLIENT' ? 'CLIENT' : 'VENDOR') as 'VENDOR' | 'CLIENT',
+    description: String(p.notes || ''),
+    tags: p.tags || [],
+    keywords: p.keyword_match ? p.keyword_match.split(',').filter(s => s) : [p.name],
+    defaultCategoryId: p.default_category_id,
+    defaultCategory: '', // Resolved in UI
+  }));
 };
 
 export const upsertProfile = async (profile: EntityProfile): Promise<EntityProfile | null> => {
   const client = getSupabaseClient();
   if (!client) return null;
 
-  // Pack tags, keywords, AND categoryId into address field: tags|keywords|catId
-  const tagsStr = (profile.tags || []).join(',');
-  const keywordsStr = (profile.keywords || []).join(',');
-  const catId = profile.defaultCategoryId || '';
-  const packedAddress = `${tagsStr}|${keywordsStr}|${catId}`;
-
   const row = {
     name: profile.name,
     type: profile.type.toLowerCase(),
     notes: profile.description,
-    address: packedAddress, 
-    // We DO NOT send category_id to DB to avoid "Column not found" error
+    tags: profile.tags || [],
+    keyword_match: (profile.keywords || []).join(','),
+    default_category_id: profile.defaultCategoryId,
   };
 
   let result;
@@ -250,17 +234,15 @@ export const upsertProfile = async (profile: EntityProfile): Promise<EntityProfi
   }
 
   const p = result.data;
-  const parts = (p.address || '').split('|');
-  const storedCatId = parts[2] || undefined;
   
   return {
     id: p.id,
     name: p.name,
     type: (p.type?.toUpperCase() === 'CLIENT' ? 'CLIENT' : 'VENDOR'),
     description: p.notes,
-    tags: parts[0] ? parts[0].split(',') : [],
-    keywords: parts[1] ? parts[1].split(',') : [p.name],
-    defaultCategoryId: p.category_id || storedCatId,
+    tags: p.tags || [],
+    keywords: p.keyword_match ? p.keyword_match.split(',') : [p.name],
+    defaultCategoryId: p.default_category_id,
     defaultCategory: '', 
   };
 };
@@ -320,8 +302,7 @@ export const getRules = async (): Promise<CategorizationRule[]> => {
     id: r.id,
     keyword: r.keyword,
     targetCategory: safeExtract(r.categories, 'name'),
-    targetCategoryId: r.target_category,
-    targetType: r.target_type ? r.target_type.toUpperCase() as TransactionType : undefined
+    targetCategoryId: r.category_id,
   }));
 };
 
@@ -332,7 +313,6 @@ export const getCategories = async (): Promise<Category[]> => {
   return (data || []).map(c => ({
     id: c.id,
     name: c.name,
-    accountType: c.account_type 
   }));
 };
 

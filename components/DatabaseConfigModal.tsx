@@ -57,7 +57,7 @@ const DatabaseConfigModal: React.FC<DatabaseConfigModalProps> = ({ isOpen, onClo
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-start gap-3">
              <AlertCircle className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
              <p className="text-xs text-slate-500 leading-relaxed font-medium">
-               Cipher Finance uses Supabase for cloud-scale storage. Find your credentials in <span className="font-bold text-slate-700">Settings > API</span>.
+               Cipher Finance uses Supabase for cloud-scale storage. Find your credentials in <span className="font-bold text-slate-700">Settings &gt; API</span>.
              </p>
           </div>
 

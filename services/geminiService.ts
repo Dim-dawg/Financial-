@@ -1,5 +1,4 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, TransactionType, DEFAULT_CATEGORIES } from "../types";
 
 const categoriesStr = DEFAULT_CATEGORIES.join(", ");
@@ -10,20 +9,22 @@ Categories ONLY from: [${categoriesStr}].
 
 CRITICAL: If a transaction looks like a significant asset purchase (e.g., "New Computer", "Truck", "Machinery") or a loan/debt activity (e.g., "SBA Loan", "Mortgage Pay"), categorize it into the most specific Asset or Liability category available. Guess logically based on typical business operations.`;
 
-const RESPONSE_SCHEMA = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      date: { type: Type.STRING },
-      description: { type: Type.STRING },
-      amount: { type: Type.NUMBER },
-      type: { type: Type.STRING },
-      category: { type: Type.STRING },
-    },
-    required: ["date", "description", "amount", "type", "category"],
-  },
+// Helper: proxy all Gemini calls via Netlify Function
+const callGeminiProxy = async (body: any) => {
+  const res = await fetch('/.netlify/functions/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Gemini proxy error: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 };
+
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -68,28 +69,16 @@ export const parseDocumentWithGemini = async (
   base64Data: string
 ): Promise<Transaction[]> => {
   return withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const mimeType = file.type || 'image/jpeg';
-    
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: { 
-        parts: [
-          { inlineData: { mimeType, data: base64Data } },
-          { text: "Extract all transactions into the specified JSON format." }
-        ] 
-      },
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-      },
+    const response = await callGeminiProxy({
+      action: 'parseDocument',
+      file: { mimeType, base64: base64Data },
+      systemInstruction: SYSTEM_INSTRUCTION,
     });
 
-    const jsonStr = response.text;
-    if (!jsonStr) throw new Error("Empty response from model");
+    const rawData = response.data;
+    if (!rawData) throw new Error('Empty response from model');
 
-    const rawData = JSON.parse(jsonStr);
     return rawData.map((item: any) => ({
       id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       date: item.date,
@@ -102,6 +91,7 @@ export const parseDocumentWithGemini = async (
   });
 };
 
+
 export const autoFillProfileData = async (entityName: string): Promise<{
   description: string;
   type: 'VENDOR' | 'CLIENT';
@@ -111,82 +101,23 @@ export const autoFillProfileData = async (entityName: string): Promise<{
   sources: { title: string; uri: string }[];
 }> => {
   return withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const searchResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Search for information about "${entityName}". Determine:
-      1. What the business does.
-      2. If they are a VENDOR or CLIENT.
-      3. 3-4 industry tags.
-      4. 3 distinct keywords or variations found in bank statement descriptions (e.g. for "Amazon", include "AMZN", "Amzn Mktp", "Amazon.com").
-      5. Which of these categories fits them best: [${categoriesStr}]`,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    });
-
-    const searchContext = searchResponse.text;
-    const chunks = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    const sources = chunks
-      .filter((c: any) => !!c.web)
-      .map((c: any) => ({
-        title: c.web.title || "Reference",
-        uri: c.web.uri || "#"
-      }));
-
-    const formatResponse = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Based on this research: "${searchContext}", create a JSON profile for "${entityName}".
-      Select the best defaultCategory from this list ONLY: [${categoriesStr}].`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            description: { type: Type.STRING },
-            type: { type: Type.STRING },
-            tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-            keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-            defaultCategory: { type: Type.STRING },
-          },
-          required: ["description", "type", "tags", "keywords", "defaultCategory"]
-        }
-      },
-    });
-
-    const data = JSON.parse(formatResponse.text || "{}");
+    const response = await callGeminiProxy({ action: 'autoFill', entityName, categories: categoriesStr });
+    const data = response.data || {};
     return {
       description: data.description || "",
       type: data.type === 'CLIENT' ? 'CLIENT' : 'VENDOR',
       tags: data.tags || [],
       keywords: data.keywords || [entityName],
       defaultCategory: data.defaultCategory || "Uncategorized",
-      sources
+      sources: data.sources || []
     };
   });
 };
 
+
 export const generateFinancialNarrative = async (summary: any): Promise<string> => {
   return withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `As a financial analyst, write a Management Discussion and Analysis (MD&A) for a business with the following summary:
-    Total Income: $${summary.totalIncome.toFixed(2)}
-    Total Expenses: $${summary.totalExpense.toFixed(2)}
-    Net Operating Profit: $${summary.netProfit.toFixed(2)}
-    Top Operating Expenses: ${summary.topExpenses.join(', ')}
-    
-    The tone should be professional, insightful, and suitable for a bank loan officer review. 
-    Comment on profitability, potential for debt service, and expense control efficiency.`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: prompt,
-      config: {
-        systemInstruction: "You are a senior commercial credit analyst. Provide 3-4 professional paragraphs.",
-      }
-    });
-
+    const response = await callGeminiProxy({ action: 'generateNarrative', summary });
     return response.text || "Financial narrative could not be generated at this time.";
   });
 };

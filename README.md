@@ -1,6 +1,6 @@
 # Cipher Finance | AI-Driven Loan Readiness Dashboard
 
-Cipher Finance is a high-performance financial intelligence platform designed to transform raw bank statements and financial documents into lender-ready reports. Using Gemini 3 Flash for document extraction and Supabase for cloud-scale data persistence, it helps business owners prepare for high-stakes bank loan interviews.
+Cipher Finance is a high-performance financial intelligence platform designed to transform raw bank statements and financial documents into lender-ready reports. Using Gemini 2.0 Flash for document extraction and Supabase for cloud-scale data persistence, it helps business owners prepare for high-stakes bank loan interviews.
 
 ## 🚀 Key Features
 
@@ -14,16 +14,41 @@ Cipher Finance is a high-performance financial intelligence platform designed to
 ## 🛠️ Technical Stack
 
 - **Frontend**: React 19, Tailwind CSS, Lucide React.
-- **AI Engine**: `@google/genai` (Gemini 3 Pro/Flash).
+- **AI Engine**: `@google/genai` (Gemini 2.0 Flash Experimental).
 - **Backend/DB**: `@supabase/supabase-js`.
 - **Visualization**: `recharts` for financial health trends and expense breakdowns.
+
+## 💻 Getting Started
+
+### Prerequisites
+- Node.js (v18+)
+- Netlify CLI (`npm install -g netlify-cli`)
+
+### Installation
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+2. **Setup Environment**:
+   Create a `.env` file in the root directory:
+   ```env
+   GEMINI_API_KEY=your_google_gemini_key_here
+   ```
+3. **Run Locally**:
+   Use Netlify Dev to run both the frontend and the backend functions simultaneously:
+   ```bash
+   netlify dev
+   ```
+   - The app will open at `http://localhost:8888`.
+   - API calls will be proxied correctly to the local function runner.
 
 ## ⚙️ Configuration
 
 ### 1. Gemini API Key
-The application requires a Google Gemini API key to process documents.
-- Click the **Key** icon in the header to open the AI Studio key selection dialog.
-- The app uses `gemini-3-flash-preview` for high-speed extraction and `gemini-3-pro-preview` for complex financial reasoning.
+The application requires a Google Gemini API key to process documents. **Important:** keep this key in server-side environment variables (e.g., Netlify/Vercel environment settings), not in client-side code or committed files. The repo includes a Netlify function to proxy Gemini calls securely (see `netlify/functions/gemini.js`).
+- Set `GEMINI_API_KEY` in your hosting provider's secret store (Netlify Site > Site settings > Build & deploy > Environment > Environment variables).
+- The client calls the serverless endpoint which proxies requests to Gemini (`/.netlify/functions/gemini`).
+- If your key may have been exposed, rotate it immediately and remove any commits/builds that contained the key.
 
 ### 2. Supabase Setup
 To enable persistent storage, click **"Link Supabase"** in the header and provide:

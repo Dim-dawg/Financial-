@@ -11,6 +11,7 @@ import {
   Sparkles, Globe, TrendingUp, TrendingDown, History, CreditCard, AlignLeft,
   AlertCircle, Unlink
 } from 'lucide-react';
+import SimilarTransactionsModal from './SimilarTransactionsModal';
 import { autoFillProfileData } from '../services/geminiService';
 import { bulkApplyProfileRule } from '../services/supabaseService';
 
@@ -22,6 +23,7 @@ interface EntityProfilesProps {
   onUpdateProfile: (profile: EntityProfile) => Promise<EntityProfile | null>;
   onDeleteProfile: (id: string) => Promise<void> | void;
   onUpdateTransaction: (transaction: Transaction) => Promise<void> | void;
+  onBulkUpload?: (transactions: Transaction[]) => Promise<void>;
   onRefreshData?: () => void;
 }
 
@@ -33,7 +35,8 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
   onUpdateProfile, 
   onDeleteProfile,
   onUpdateTransaction,
-  onRefreshData
+  onRefreshData,
+  onBulkUpload
 }) => {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [view, setView] = useState<'DIRECTORY' | 'DETAIL' | 'EDITOR'>('DIRECTORY');
@@ -43,6 +46,10 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [profileToDeleteId, setProfileToDeleteId] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+
+  // Similar modal state
+  const [modalBaseTx, setModalBaseTx] = useState<Transaction | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Pagination State
   const [detailPage, setDetailPage] = useState(1);
@@ -367,6 +374,9 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                                 <X size={14} />
                               </button>
                             )}
+                            <button onClick={() => { setModalBaseTx(t); setIsModalOpen(true); }} title="Find Similar" className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all ml-2">
+                              <Sparkles size={14} />
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -376,7 +386,28 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
               </div>
 
               {/* Pagination Footer */}
-              {totalPages > 1 && (
+              {isModalOpen && modalBaseTx && (
+                <SimilarTransactionsModal
+                  isOpen={isModalOpen}
+                  onClose={() => setIsModalOpen(false)}
+                  base={modalBaseTx}
+                  transactions={transactions}
+                  profiles={profiles}
+                  categories={categories}
+                  onApply={async (ids, updates) => {
+                    // apply updates by calling onUpdateTransaction for each selected id
+                    for (const id of ids) {
+                      const t = transactions.find(tx => tx.id === id);
+                      if (t) await onUpdateTransaction({ ...t, ...updates });
+                    }
+                  }}
+                  onUpload={async (txs) => {
+                    if (onBulkUpload) await onBulkUpload(txs);
+                  }}
+                />
+            )}
+
+            {totalPages > 1 && (
                   <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                       <button 
                           onClick={() => setDetailPage(p => Math.max(1, p - 1))}
