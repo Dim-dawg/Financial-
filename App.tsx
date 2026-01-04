@@ -397,8 +397,10 @@ export default function App() {
                   if (db.isSupabaseConfigured()) await db.deleteTransaction(id);
                 }}
                 onBulkUpdate={async (ids, updates) => {
-                  setTransactions(prev => prev.map(t => ids.includes(t.id) ? { ...t, ...updates } : t));
-                  const targets = transactions.filter(t => ids.includes(t.id)).map(t => ({ ...t, ...updates }));
+                  const newTransactions = transactions.map(t => ids.includes(t.id) ? { ...t, ...updates } : t);
+                  setTransactions(newTransactions);
+
+                  const targets = newTransactions.filter(t => ids.includes(t.id));
                   if (db.isSupabaseConfigured()) await db.upsertTransactions(targets);
                 }}
                 onBulkUpload={async (txs) => {
