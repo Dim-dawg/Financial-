@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Transaction, EntityProfile, Category } from '../types';
 import { X, CheckSquare, Search as SearchIcon } from 'lucide-react';
-import { getSupabaseClient } from '../services/supabaseService';
 
 interface Props {
   isOpen: boolean;
@@ -24,28 +23,21 @@ const SimilarTransactionsModal: React.FC<Props> = ({ isOpen, onClose, base, tran
   const [candidates, setCandidates] = useState<Transaction[]>([]);
 
   useEffect(() => {
-    const fetchSimilarTransactions = async () => {
-      if (!base) return;
-      const supabase = getSupabaseClient();
-      if (!supabase) return;
-
+    if (isOpen && base) {
       const targetDescription = base.originalDescription || base.description;
-      const merchantCore = targetDescription.split(' ').slice(0, 2).join(' ');
-      
-      const { data } = await supabase
-        .from('transactions')
-        .select('*')
-        .ilike('original_description', `%${merchantCore}%`);
+      const merchantCoreWords = targetDescription.split(' ').slice(0, 3).map(word => word.toLowerCase()); // Get first 2-3 words
 
-      if (data) {
-        setCandidates(data.filter(t => t.id !== base.id));
-      }
-    };
+      const filteredTransactions = transactions.filter(t => {
+        if (t.id === base.id) return false; // Exclude itself
 
-    if (isOpen) {
-      fetchSimilarTransactions();
+        const descriptionToMatch = (t.originalDescription || t.description || '').toLowerCase();
+        
+        // Check if descriptionToMatch contains all merchantCoreWords
+        return merchantCoreWords.every(word => descriptionToMatch.includes(word));
+      });
+      setCandidates(filteredTransactions);
     }
-  }, [isOpen, base]);
+  }, [isOpen, base, transactions]);
 
   useEffect(() => {
     if (isOpen && base && candidates.length > 0) {
