@@ -391,7 +391,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                   isOpen={isModalOpen}
                   onClose={() => setIsModalOpen(false)}
                   base={modalBaseTx}
-                  transactions={transactions}
+                  transactions={linkedTransactions}
                   profiles={profiles}
                   categories={categories}
                   onApply={async (ids, updates) => {
