@@ -3,11 +3,27 @@ import { Transaction, TransactionType, DEFAULT_CATEGORIES } from "../types";
 
 const categoriesStr = DEFAULT_CATEGORIES.join(", ");
 
-const SYSTEM_INSTRUCTION = `Expert financial analyst. Extract transactions from bank statements/receipts to JSON. 
-Date (YYYY-MM-DD), Description, Amount (positive), Type (income/expense). 
-Categories ONLY from: [${categoriesStr}]. 
+const SYSTEM_INSTRUCTION = `Act as a Data Normalization Engine. Your task is to process bank statement transactions and group them by identifying the core "Merchant Entity" or "Income Source" within the raw text.
 
-CRITICAL: If a transaction looks like a significant asset purchase (e.g., "New Computer", "Truck", "Machinery") or a loan/debt activity (e.g., "SBA Loan", "Mortgage Pay"), categorize it into the most specific Asset or Liability category available. Guess logically based on typical business operations.`;
+### OBJECTIVE:
+Group transactions that are functionally the same, even if the raw description has minor variations (dates, transaction IDs, or bank codes).
+
+### STRICT MATCHING RULES:
+1. STRIP VARIABLE NOISE: Ignore unique identifiers like "A 9202820", "IFT INC BB", "TRSF", or specific dates/times.
+2. GROUPING PRIORITY: If two descriptions share the same 4-5 leading words or the same unique brand name (e.g., "Atlantic Bank", "Dimitri Camron"), they MUST be assigned the exact same 'cleaned_description'.
+3. EXACT MATCHING: If the user says "same description," ensure the 'cleaned_description' is character-for-character identical for recurring vendors.
+4. CATEGORIZATION: Use conservative categories. Do not guess. If it says "Transfer," categorize as 'Internal Transfer' unless a specific vendor is clear.
+
+### JSON OUTPUT SCHEMA:
+Return only a JSON array of objects:
+{
+  "date": "YYYY-MM-DD",
+  "original_description": "Full raw text",
+  "cleaned_description": "The normalized entity name (e.g., 'Atlantic Bank' instead of 'Atlantic Bank A/C 123')",
+  "amount": number,
+  "category": "Accounting Category",
+  "is_recurring": boolean
+}`;
 
 // Helper: proxy all Gemini calls via Netlify Function
 const callGeminiProxy = async (body: any) => {
@@ -82,11 +98,12 @@ export const parseDocumentWithGemini = async (
     return rawData.map((item: any) => ({
       id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       date: item.date,
-      description: item.description,
+      description: item.cleaned_description,
       amount: Math.abs(item.amount),
-      type: item.type?.toLowerCase() === 'income' ? TransactionType.INCOME : TransactionType.EXPENSE,
+      type: item.amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENSE,
       category: item.category,
-      originalDescription: item.description,
+      originalDescription: item.original_description,
+      is_recurring: item.is_recurring,
     }));
   });
 };

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Transaction, EntityProfile, Category } from '../types';
 import { X, CheckSquare, Search as SearchIcon } from 'lucide-react';
-import { findSimilarTransactions } from '../utils/findSimilarTransactions';
+import { getSupabaseClient } from '../services/supabaseService';
 
 interface Props {
   isOpen: boolean;
@@ -21,15 +21,34 @@ const SimilarTransactionsModal: React.FC<Props> = ({ isOpen, onClose, base, tran
   const [categoryId, setCategoryId] = useState<string>('');
   const [applying, setApplying] = useState(false);
   const [uploading, setUploading] = useState(false);
-
-  const candidates = useMemo(() => {
-    if (!base) return [];
-    const sims = findSimilarTransactions(base, transactions, { minTokenOverlap: 2, amountTolerance: 1 });
-    return sims;
-  }, [base, transactions]);
+  const [candidates, setCandidates] = useState<Transaction[]>([]);
 
   useEffect(() => {
-    if (isOpen && base) {
+    const fetchSimilarTransactions = async () => {
+      if (!base) return;
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+
+      const targetDescription = base.originalDescription || base.description;
+      const merchantCore = targetDescription.split(' ').slice(0, 2).join(' ');
+      
+      const { data } = await supabase
+        .from('transactions')
+        .select('*')
+        .ilike('original_description', `%${merchantCore}%`);
+
+      if (data) {
+        setCandidates(data.filter(t => t.id !== base.id));
+      }
+    };
+
+    if (isOpen) {
+      fetchSimilarTransactions();
+    }
+  }, [isOpen, base]);
+
+  useEffect(() => {
+    if (isOpen && base && candidates.length > 0) {
       // auto-select amount matches
       const auto = new Set<string>();
       for (const t of candidates) {

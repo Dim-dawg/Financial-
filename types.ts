@@ -35,6 +35,7 @@ export interface Transaction {
   documentId?: string;
   entityId?: string; 
   entityName?: string;
+  is_recurring?: boolean;
 }
 
 export interface EntityProfile {

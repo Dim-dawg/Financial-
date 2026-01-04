@@ -13,10 +13,20 @@ Cipher Finance is a high-performance financial intelligence platform designed to
 
 ## 🛠️ Technical Stack
 
-- **Frontend**: React 19, Tailwind CSS, Lucide React.
-- **AI Engine**: `@google/genai` (Gemini 2.0 Flash Experimental).
-- **Backend/DB**: `@supabase/supabase-js`.
-- **Visualization**: `recharts` for financial health trends and expense breakdowns.
+- **Frontend**: 
+  - `react`: ^19.2.3
+  - `react-dom`: ^19.2.3
+  - `lucide-react`: ^0.561.0
+- **AI Engine**: `@google/genai`: ^1.33.0
+- **Backend/DB**: `@supabase/supabase-js`: ^2.45.0
+- **Visualization**: `recharts`: ^3.6.0
+
+## 👨‍💻 Development Stack
+
+- **Vite**: ^6.2.0
+- **TypeScript**: ~5.8.2
+- **@vitejs/plugin-react**: ^5.0.0
+- **@types/node**: ^22.14.0
 
 ## 💻 Getting Started
 
@@ -39,8 +49,10 @@ Cipher Finance is a high-performance financial intelligence platform designed to
    ```bash
    netlify dev
    ```
-   - The app will open at `http://localhost:8888`.
-   - API calls will be proxied correctly to the local function runner.
+   - The Netlify Dev server will start on `http://localhost:8888`.
+   - The Vite development server will start on `http://localhost:5175`.
+   - Your browser will automatically open to the Vite server.
+   - API calls will be proxied correctly from the Vite server to the local function runner on port 8888.
 
 ## ⚙️ Configuration
 

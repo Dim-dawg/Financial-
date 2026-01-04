@@ -63,12 +63,13 @@ export const handler = async function(event, context) {
           type: Type.OBJECT,
           properties: {
             date: { type: Type.STRING },
-            description: { type: Type.STRING },
+            original_description: { type: Type.STRING },
+            cleaned_description: { type: Type.STRING },
             amount: { type: Type.NUMBER },
-            type: { type: Type.STRING },
             category: { type: Type.STRING },
+            is_recurring: { type: Type.BOOLEAN },
           },
-          required: ['date','description','amount','type','category']
+          required: ['date', 'original_description', 'cleaned_description', 'amount', 'category', 'is_recurring']
         }
       };
 
