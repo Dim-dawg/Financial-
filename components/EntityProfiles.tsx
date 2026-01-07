@@ -382,7 +382,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                             </button>
                           </td>
                         </tr>
-                      ))
+                      )
                     )}
                   </tbody>
                 </table>
