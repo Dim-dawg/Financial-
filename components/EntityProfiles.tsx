@@ -322,10 +322,10 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                     ) : (
                         paginatedTransactions.map(t => {
                           const currentCatId = t.categoryId || categories.find(c => c.name === t.category)?.id || '';
-                          const availableCategories = selectedEntity.allowedCategoryIds 
+                          const availableCategories = selectedEntity.allowedCategoryIds
                             ? categories.filter(c => selectedEntity.allowedCategoryIds.includes(c.id))
                             : categories;
-                          
+
                           // Ensure current category is available
                           if (currentCatId && !availableCategories.some(c => c.id === currentCatId)) {
                             const currentCategoryInGlobal = categories.find(c => c.id === currentCatId);
@@ -341,7 +341,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                               </td>
                               <td className="py-4 pr-4">
                                 <div className="relative">
-                                  <select 
+                                  <select
                                     className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-tight outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 cursor-pointer"
                                     value={currentCatId}
                                     onChange={(e) => {
@@ -360,7 +360,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                               </td>
                           <td className="py-4 pl-2 text-right">
                             {!isUnassignedView && (
-                              <button 
+                              <button
                                 onClick={() => handleUnlinkTransaction(t)}
                                 title="Unlink from Identity"
                                 className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
@@ -369,7 +369,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                               </button>
                             )}
                             {isUnassignedView && t.entityId && (
-                                <button 
+                                <button
                                 onClick={() => handleUnlinkTransaction(t)}
                                 title="Clear Assignment"
                                 className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
@@ -382,8 +382,8 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                             </button>
                           </td>
                         </tr>
-                      )
-                    )}
+                          );
+                        })
                   </tbody>
                 </table>
               </div>
@@ -591,8 +591,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                 })}
               </div>
             </section>
-          ))
-        )}
+                                                          })        )}
       </div>
 
       {toast && (
