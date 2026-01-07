@@ -23,7 +23,6 @@ import { parseDocumentWithGemini, readFileAsBase64 } from './services/geminiServ
 import * as db from './services/supabaseService';
 import Dashboard from './components/Dashboard';
 import TransactionTable from './components/TransactionTable';
-import { connectToSheet, saveTransactionsToSheet } from './services/sheetService';
 import RulesEngine from './components/RulesEngine';
 import CategoryManager from './components/CategoryManager';
 import EntityProfiles from './components/EntityProfiles';
@@ -397,43 +396,9 @@ export default function App() {
                   if (db.isSupabaseConfigured()) await db.deleteTransaction(id);
                 }}
                 onBulkUpdate={async (ids, updates) => {
-                  const newTransactions = transactions.map(t => ids.includes(t.id) ? { ...t, ...updates } : t);
-                  setTransactions(newTransactions);
-
-                  const targets = newTransactions.filter(t => ids.includes(t.id));
+                  setTransactions(prev => prev.map(t => ids.includes(t.id) ? { ...t, ...updates } : t));
+                  const targets = transactions.filter(t => ids.includes(t.id)).map(t => ({ ...t, ...updates }));
                   if (db.isSupabaseConfigured()) await db.upsertTransactions(targets);
-                }}
-                onBulkUpload={async (txs) => {
-                  // Try Sheet upload if configured, otherwise fallback to CSV download
-                  const sheetUrl = localStorage.getItem('sheet_url');
-                  if (sheetUrl) {
-                    try {
-                      const user = await connectToSheet(sheetUrl);
-                      await saveTransactionsToSheet(sheetUrl, user.id, txs);
-                      alert(`Uploaded ${txs.length} transactions to sheet.`);
-                      return;
-                    } catch (e) {
-                      console.error('Sheet upload failed', e);
-                      alert('Sheet upload failed, falling back to CSV');
-                    }
-                  }
-
-                  // CSV fallback
-                  try {
-                    const headers = ['id','date','description','amount','category','type'];
-                    const rows = txs.map(t => [t.id, t.date, `"${(t.description|| '').replace(/"/g,'""')}"`, t.amount, t.category || '', t.type].join(','));
-                    const csv = [headers.join(','), ...rows].join('\n');
-                    const blob = new Blob([csv], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `transactions-${Date.now()}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  } catch (e) {
-                    console.error('CSV export failed', e);
-                    alert('Failed to export CSV');
-                  }
                 }}
                 onCreateProfile={handleCreateProfile}
               />
@@ -449,36 +414,6 @@ export default function App() {
                 categories={categories}
                 onUpdateTransaction={handleTransactionUpdate}
                 onAddProfile={handleCreateProfile}
-                onBulkUpload={async (txs) => {
-                  const sheetUrl = localStorage.getItem('sheet_url');
-                  if (sheetUrl) {
-                    try {
-                      const user = await connectToSheet(sheetUrl);
-                      await saveTransactionsToSheet(sheetUrl, user.id, txs);
-                      alert(`Uploaded ${txs.length} transactions to sheet.`);
-                      return;
-                    } catch (e) {
-                      console.error('Sheet upload failed', e);
-                      alert('Sheet upload failed, falling back to CSV');
-                    }
-                  }
-
-                  try {
-                    const headers = ['id','date','description','amount','category','type'];
-                    const rows = txs.map(t => [t.id, t.date, `"${(t.description|| '').replace(/"/g,'""')}"`, t.amount, t.category || '', t.type].join(','));
-                    const csv = [headers.join(','), ...rows].join('\n');
-                    const blob = new Blob([csv], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `transactions-${Date.now()}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  } catch (e) {
-                    console.error('CSV export failed', e);
-                    alert('Failed to export CSV');
-                  }
-                }}
                 onUpdateProfile={async (p) => {
                   const updated = await db.upsertProfile(p);
                   if (updated) setProfiles(prev => prev.map(old => old.id === updated.id ? updated : old));

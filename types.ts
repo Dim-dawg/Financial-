@@ -35,7 +35,6 @@ export interface Transaction {
   documentId?: string;
   entityId?: string; 
   entityName?: string;
-  is_recurring?: boolean;
 }
 
 export interface EntityProfile {
@@ -45,7 +44,8 @@ export interface EntityProfile {
   description: string;
   tags: string[];
   keywords: string[];
-  allowedCategoryIds?: string[];
+  defaultCategoryId?: string;
+  defaultCategory?: string;
   sources?: { title: string; uri: string }[];
 }
 

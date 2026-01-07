@@ -1,6 +1,6 @@
 # Cipher Finance | AI-Driven Loan Readiness Dashboard
 
-Cipher Finance is a high-performance financial intelligence platform designed to transform raw bank statements and financial documents into lender-ready reports. Using Gemini 2.0 Flash for document extraction and Supabase for cloud-scale data persistence, it helps business owners prepare for high-stakes bank loan interviews.
+Cipher Finance is a high-performance financial intelligence platform designed to transform raw bank statements and financial documents into lender-ready reports. Using Gemini 3 Flash for document extraction and Supabase for cloud-scale data persistence, it helps business owners prepare for high-stakes bank loan interviews.
 
 ## 🚀 Key Features
 
@@ -13,54 +13,17 @@ Cipher Finance is a high-performance financial intelligence platform designed to
 
 ## 🛠️ Technical Stack
 
-- **Frontend**: 
-  - `react`: ^19.2.3
-  - `react-dom`: ^19.2.3
-  - `lucide-react`: ^0.561.0
-- **AI Engine**: `@google/genai`: ^1.33.0
-- **Backend/DB**: `@supabase/supabase-js`: ^2.45.0
-- **Visualization**: `recharts`: ^3.6.0
-
-## 👨‍💻 Development Stack
-
-- **Vite**: ^6.2.0
-- **TypeScript**: ~5.8.2
-- **@vitejs/plugin-react**: ^5.0.0
-- **@types/node**: ^22.14.0
-
-## 💻 Getting Started
-
-### Prerequisites
-- Node.js (v18+)
-- Netlify CLI (`npm install -g netlify-cli`)
-
-### Installation
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-2. **Setup Environment**:
-   Create a `.env` file in the root directory:
-   ```env
-   GEMINI_API_KEY=your_google_gemini_key_here
-   ```
-3. **Run Locally**:
-   Use Netlify Dev to run both the frontend and the backend functions simultaneously:
-   ```bash
-   netlify dev
-   ```
-   - The Netlify Dev server will start on `http://localhost:8888`.
-   - The Vite development server will start on `http://localhost:5175`.
-   - Your browser will automatically open to the Vite server.
-   - API calls will be proxied correctly from the Vite server to the local function runner on port 8888.
+- **Frontend**: React 19, Tailwind CSS, Lucide React.
+- **AI Engine**: `@google/genai` (Gemini 3 Pro/Flash).
+- **Backend/DB**: `@supabase/supabase-js`.
+- **Visualization**: `recharts` for financial health trends and expense breakdowns.
 
 ## ⚙️ Configuration
 
 ### 1. Gemini API Key
-The application requires a Google Gemini API key to process documents. **Important:** keep this key in server-side environment variables (e.g., Netlify/Vercel environment settings), not in client-side code or committed files. The repo includes a Netlify function to proxy Gemini calls securely (see `netlify/functions/gemini.js`).
-- Set `GEMINI_API_KEY` in your hosting provider's secret store (Netlify Site > Site settings > Build & deploy > Environment > Environment variables).
-- The client calls the serverless endpoint which proxies requests to Gemini (`/.netlify/functions/gemini`).
-- If your key may have been exposed, rotate it immediately and remove any commits/builds that contained the key.
+The application requires a Google Gemini API key to process documents.
+- Click the **Key** icon in the header to open the AI Studio key selection dialog.
+- The app uses `gemini-3-flash-preview` for high-speed extraction and `gemini-3-pro-preview` for complex financial reasoning.
 
 ### 2. Supabase Setup
 To enable persistent storage, click **"Link Supabase"** in the header and provide:

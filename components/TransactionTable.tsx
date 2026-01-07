@@ -5,9 +5,8 @@ import {
   Trash2, Calendar, Tag, ArrowUpRight, ArrowDownLeft, 
   Loader2, CheckSquare, ChevronUp, ChevronDown,
   ArrowUpDown, X, Building, Link2, Search, ChevronLeft, ChevronRight,
-  UserPlus, CheckCircle2, Sparkles
+  UserPlus, CheckCircle2
 } from 'lucide-react';
-import SimilarTransactionsModal from './SimilarTransactionsModal';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -16,7 +15,6 @@ interface TransactionTableProps {
   onUpdateTransaction: (updated: Transaction) => Promise<void> | void;
   onDeleteTransaction: (id: string) => void;
   onBulkUpdate?: (ids: string[], updates: Partial<Transaction>) => Promise<void>;
-  onBulkUpload?: (transactions: Transaction[]) => Promise<void>;
   onCreateProfile?: (profile: EntityProfile) => Promise<EntityProfile | null>;
 }
 
@@ -44,26 +42,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [pendingTransactionId, setPendingTransactionId] = useState<string | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  // Similar modal state
-  const [modalBaseTx, setModalBaseTx] = useState<Transaction | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
-
-  const openSimilarModal = (t: Transaction) => {
-    setModalBaseTx(t);
-    setIsModalOpen(true);
-  };
-
-  const handleModalApply = async (ids: string[], updates: Partial<Transaction>) => {
-    if (onBulkUpdate) await onBulkUpdate(ids, updates);
-  };
-
-  const handleModalUpload = async (txs: Transaction[]) => {
-    if (onBulkUpload) await onBulkUpload(txs);
-  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -97,26 +78,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       setIsCreatingProfile(true);
     } else {
       const p = profiles.find(prof => prof.id === value);
-      const updates: Partial<Transaction> = { entityId: value || undefined, entityName: p?.name };
-
-      // Smart-categorize if transaction is uncategorized
-      if (p && p.allowedCategoryIds && p.allowedCategoryIds.length > 0 && !t.categoryId) {
-        const allowedCategories = categories.filter(c => p.allowedCategoryIds!.includes(c.id));
-        const txDesc = t.description.toLowerCase();
-        
-        const matches = allowedCategories.filter(c => txDesc.includes(c.name.toLowerCase()));
-
-        if (matches.length === 1) {
-          // Unambiguous match found
-          updates.categoryId = matches[0].id;
-          updates.category = matches[0].name;
-        } else if (allowedCategories.length > 0) {
-          // Ambiguous or no match, fall back to first allowed as default
-          updates.categoryId = allowedCategories[0].id;
-          updates.category = allowedCategories[0].name;
-        }
-      }
-      handleUpdate(t, updates);
+      handleUpdate(t, { entityId: value || undefined, entityName: p?.name });
     }
   };
 
@@ -131,7 +93,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         description: 'Created from Ledger',
         tags: [],
         keywords: [newProfileName],
-        allowedCategoryIds: [],
       };
 
       const created = await onCreateProfile(newProfile);
@@ -343,22 +304,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 // Determine the best value for category select
                 const currentCatId = t.categoryId || categories.find(c => c.name === t.category)?.id || '';
 
-                const availableCategories = (() => {
-                  const profile = profiles.find(p => p.id === t.entityId);
-                  if (profile && profile.allowedCategoryIds && profile.allowedCategoryIds.length > 0) {
-                    const allowed = categories.filter(c => profile.allowedCategoryIds!.includes(c.id));
-                    // Ensure the current category is in the list if it's not in the allowed list
-                    if (currentCatId && !allowed.some(c => c.id === currentCatId)) {
-                      const currentCategory = categories.find(c => c.id === currentCatId);
-                      if (currentCategory) {
-                        return [...allowed, currentCategory];
-                      }
-                    }
-                    return allowed;
-                  }
-                  return categories;
-                })();
-
                 return (
                   <tr key={t.id} className={`group hover:bg-slate-50/50 transition-all ${selectedIds.has(t.id) ? 'bg-indigo-50/30' : ''}`}>
                     <td className="px-6 py-4">
@@ -415,7 +360,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         >
                           <option value="">Uncategorized</option>
                           <option value="Uncategorized">Uncategorized</option>
-                          {availableCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
                     </td>
@@ -427,10 +372,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         {isSaving && <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-500 mt-1" />}
                       </div>
                     </td>
-                    <td className="px-6 py-4 flex items-center gap-2">
-                      <button onClick={() => openSimilarModal(t)} title="Find Similar" className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all">
-                        <Sparkles size={16} />
-                      </button>
+                    <td className="px-6 py-4">
                       <button onClick={() => onDeleteTransaction(t.id)} className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
                         <Trash2 size={16} />
                       </button>
@@ -449,20 +391,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         </div>
       </div>
       
-      {/* Similar Modal */}
-      {isModalOpen && modalBaseTx && (
-        <SimilarTransactionsModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          base={modalBaseTx}
-          transactions={transactions}
-          profiles={profiles}
-          categories={categories}
-          onApply={handleModalApply}
-          onUpload={handleModalUpload}
-        />
-      )}
-
       {/* Pagination Controls - Bottom */}
       {totalPages > 1 && (
         <div className="flex justify-center pb-8">

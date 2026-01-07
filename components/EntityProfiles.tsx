@@ -11,7 +11,6 @@ import {
   Sparkles, Globe, TrendingUp, TrendingDown, History, CreditCard, AlignLeft,
   AlertCircle, Unlink
 } from 'lucide-react';
-import SimilarTransactionsModal from './SimilarTransactionsModal';
 import { autoFillProfileData } from '../services/geminiService';
 import { bulkApplyProfileRule } from '../services/supabaseService';
 
@@ -23,7 +22,6 @@ interface EntityProfilesProps {
   onUpdateProfile: (profile: EntityProfile) => Promise<EntityProfile | null>;
   onDeleteProfile: (id: string) => Promise<void> | void;
   onUpdateTransaction: (transaction: Transaction) => Promise<void> | void;
-  onBulkUpload?: (transactions: Transaction[]) => Promise<void>;
   onRefreshData?: () => void;
 }
 
@@ -35,8 +33,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
   onUpdateProfile, 
   onDeleteProfile,
   onUpdateTransaction,
-  onRefreshData,
-  onBulkUpload
+  onRefreshData
 }) => {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [view, setView] = useState<'DIRECTORY' | 'DETAIL' | 'EDITOR'>('DIRECTORY');
@@ -46,10 +43,6 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [profileToDeleteId, setProfileToDeleteId] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
-
-  // Similar modal state
-  const [modalBaseTx, setModalBaseTx] = useState<Transaction | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Pagination State
   const [detailPage, setDetailPage] = useState(1);
@@ -193,9 +186,15 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
     try {
       if (editingProfile) {
         await onUpdateProfile(data);
+        if (runBulkApply && data.id && data.defaultCategoryId) {
+          await bulkApplyProfileRule(data.keywords, data.id, data.defaultCategoryId);
+        }
         setToast({ message: `Identity updated successfully.`, type: 'success' });
       } else {
-        await onAddProfile(data);
+        const result = await onAddProfile(data);
+        if (runBulkApply && result?.id && result?.defaultCategoryId) {
+          await bulkApplyProfileRule(result.keywords, result.id, result.defaultCategoryId);
+        }
         setToast({ message: `New identity registered.`, type: 'success' });
       }
       setView('DIRECTORY');
@@ -265,9 +264,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                           {selectedEntity.type}
                         </span>
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          {selectedEntity.allowedCategoryIds && selectedEntity.allowedCategoryIds.length > 0
-                            ? selectedEntity.allowedCategoryIds.map(id => categories.find(c => c.id === id)?.name).join(', ')
-                            : 'General Account'}
+                          {categories.find(c => c.id === selectedEntity.defaultCategoryId)?.name || 'General Account'}
                         </span>
                       </>
                     ) : (
@@ -306,7 +303,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                     <tr className="text-[9px] font-black uppercase text-slate-400 tracking-widest">
                       <th className="pb-4">Date</th>
                       <th className="pb-4">Ledger Description</th>
-                      <th className="pb-4">GL Account</th>
+                      <th className="pb-4">Assign To</th>
                       <th className="pb-4 text-right">Amount</th>
                       <th className="pb-4 w-10"></th>
                     </tr>
@@ -320,47 +317,40 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                         </td>
                       </tr>
                     ) : (
-                        paginatedTransactions.map(t => {
-                          const currentCatId = t.categoryId || categories.find(c => c.name === t.category)?.id || '';
-                          const availableCategories = selectedEntity.allowedCategoryIds
-                            ? categories.filter(c => selectedEntity.allowedCategoryIds.includes(c.id))
-                            : categories;
-
-                          // Ensure current category is available
-                          if (currentCatId && !availableCategories.some(c => c.id === currentCatId)) {
-                            const currentCategoryInGlobal = categories.find(c => c.id === currentCatId);
-                            if (currentCategoryInGlobal) availableCategories.push(currentCategoryInGlobal);
-                          }
-
-                          return (
-                            <tr key={t.id} className="group hover:bg-slate-50 transition-colors">
-                              <td className="py-4 text-xs font-bold text-slate-500 tabular-nums w-24">{t.date}</td>
-                              <td className="py-4">
-                                <p className="text-xs font-black text-slate-800 truncate">{t.description}</p>
-                                <p className="text-[9px] text-slate-400 font-medium uppercase truncate">{t.originalDescription}</p>
-                              </td>
-                              <td className="py-4 pr-4">
-                                <div className="relative">
-                                  <select
-                                    className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-tight outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 cursor-pointer"
-                                    value={currentCatId}
-                                    onChange={(e) => {
-                                      const cat = categories.find(c => c.id === e.target.value);
-                                      if (cat) onUpdateTransaction({ ...t, category: cat.name, categoryId: cat.id });
-                                    }}
-                                  >
-                                    <option value="">Uncategorized</option>
-                                    {availableCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                  </select>
-                                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-3 h-3 pointer-events-none" />
-                                </div>
-                              </td>
-                              <td className={`py-4 text-right text-xs font-black tabular-nums ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                {t.type === TransactionType.INCOME ? '+' : '-'}${t.amount.toFixed(2)}
-                              </td>
+                      paginatedTransactions.map(t => (
+                        <tr key={t.id} className="group hover:bg-slate-50 transition-colors">
+                          <td className="py-4 text-xs font-bold text-slate-500 tabular-nums w-24">{t.date}</td>
+                          <td className="py-4 max-w-[200px]">
+                            <p className="text-xs font-black text-slate-800 truncate">{t.description}</p>
+                            <p className="text-[9px] text-slate-400 font-medium uppercase truncate">{t.originalDescription}</p>
+                          </td>
+                          <td className="py-4 pr-4">
+                            <div className="relative">
+                                {assigningId === t.id ? (
+                                    <div className="flex items-center gap-2 text-xs font-bold text-indigo-600">
+                                        <Loader2 className="w-3 h-3 animate-spin" /> Saving...
+                                    </div>
+                                ) : (
+                                    <div className="relative group/sel">
+                                        <select 
+                                            className={`w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-tight outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 cursor-pointer ${!t.entityId ? 'text-amber-600' : 'text-slate-700'}`}
+                                            value={t.entityId || ''}
+                                            onChange={(e) => handleAssignTransaction(t, e.target.value)}
+                                        >
+                                            <option value="" disabled>-- Assign --</option>
+                                            {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-3 h-3 pointer-events-none" />
+                                    </div>
+                                )}
+                            </div>
+                          </td>
+                          <td className={`py-4 text-right text-xs font-black tabular-nums ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-900'}`}>
+                            {t.type === TransactionType.INCOME ? '+' : '-'}${t.amount.toFixed(2)}
+                          </td>
                           <td className="py-4 pl-2 text-right">
                             {!isUnassignedView && (
-                              <button
+                              <button 
                                 onClick={() => handleUnlinkTransaction(t)}
                                 title="Unlink from Identity"
                                 className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
@@ -369,7 +359,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                               </button>
                             )}
                             {isUnassignedView && t.entityId && (
-                                <button
+                                <button 
                                 onClick={() => handleUnlinkTransaction(t)}
                                 title="Clear Assignment"
                                 className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
@@ -377,40 +367,16 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                                 <X size={14} />
                               </button>
                             )}
-                            <button onClick={() => { setModalBaseTx(t); setIsModalOpen(true); }} title="Find Similar" className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all ml-2">
-                              <Sparkles size={14} />
-                            </button>
                           </td>
                         </tr>
-                          );
-                        })
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
 
               {/* Pagination Footer */}
-              {isModalOpen && modalBaseTx && (
-                <SimilarTransactionsModal
-                  isOpen={isModalOpen}
-                  onClose={() => setIsModalOpen(false)}
-                  base={modalBaseTx}
-                  transactions={linkedTransactions}
-                  profiles={profiles}
-                  categories={categories}
-                  onApply={async (ids, updates) => {
-                    // apply updates by calling onUpdateTransaction for each selected id
-                    for (const id of ids) {
-                      const t = transactions.find(tx => tx.id === id);
-                      if (t) await onUpdateTransaction({ ...t, ...updates });
-                    }
-                  }}
-                  onUpload={async (txs) => {
-                    if (onBulkUpload) await onBulkUpload(txs);
-                  }}
-                />
-            )}
-
-            {totalPages > 1 && (
+              {totalPages > 1 && (
                   <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                       <button 
                           onClick={() => setDetailPage(p => Math.max(1, p - 1))}
@@ -576,7 +542,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                         <h4 className="text-sm font-black text-slate-800 truncate leading-tight">{p.name}</h4>
                         <div className="flex items-center justify-between mt-3">
                           <span className="text-[9px] font-black uppercase text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                            {p.allowedCategoryIds && p.allowedCategoryIds.length > 0 ? `${p.allowedCategoryIds.length} Accounts` : 'General'}
+                            {categories.find(c => c.id === p.defaultCategoryId)?.name || 'General'}
                           </span>
                           <div className="flex items-center gap-1.5">
                             <History size={12} className="text-indigo-400" />
@@ -591,7 +557,8 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                 })}
               </div>
             </section>
-                                                          })        )}
+          ))
+        )}
       </div>
 
       {toast && (
@@ -615,15 +582,9 @@ const ProfileEditor: React.FC<{
   const [type, setType] = useState<'VENDOR' | 'CLIENT'>(profile?.type || 'VENDOR');
   const [keywordsStr, setKeywordsStr] = useState(profile?.keywords?.join(', ') || profile?.name || '');
   const [description, setDescription] = useState(profile?.description || '');
-  const [allowedCategoryIds, setAllowedCategoryIds] = useState<string[]>(profile?.allowedCategoryIds || []);
+  const [defaultCategoryId, setDefaultCategoryId] = useState(profile?.defaultCategoryId || '');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
-  const toggleCategory = (id: string) => {
-    setAllowedCategoryIds(prev => 
-      prev.includes(id) ? prev.filter(catId => catId !== id) : [...prev, id]
-    );
-  };
 
   const handleMagicFill = async () => {
     if (!name) return;
@@ -633,7 +594,7 @@ const ProfileEditor: React.FC<{
       setType(data.type);
       setKeywordsStr(data.keywords.join(', '));
       const cat = categories.find(c => c.name === data.defaultCategory);
-      if (cat) setAllowedCategoryIds([cat.id]);
+      if (cat) setDefaultCategoryId(cat.id);
       if (data.description) setDescription(data.description);
     } catch (err) {
       console.error(err);
@@ -642,24 +603,25 @@ const ProfileEditor: React.FC<{
     }
   };
 
-    const handleSaveClick = async () => {
-      setIsSaving(true);
-      try {
-        // Process keywords: split, trim, filter empty, and sort by length DESC
-        const processedKeywords = keywordsStr
-          .split(',')
-          .map(k => k.trim())
-          .filter(k => k.length > 0)
-          .sort((a, b) => b.length - a.length);
-  
-        await onSave({ 
-          id: profile?.id || `prof-${Date.now()}`, 
-          name, type, 
-          description, 
-          tags: [], 
-          keywords: processedKeywords,
-          allowedCategoryIds: allowedCategoryIds
-        }, true);    } catch (e) {
+  const handleSaveClick = async () => {
+    setIsSaving(true);
+    try {
+      // Process keywords: split, trim, filter empty, and sort by length DESC
+      const processedKeywords = keywordsStr
+        .split(',')
+        .map(k => k.trim())
+        .filter(k => k.length > 0)
+        .sort((a, b) => b.length - a.length);
+
+      await onSave({ 
+        id: profile?.id || `prof-${Date.now()}`, 
+        name, type, 
+        description, 
+        tags: [], 
+        keywords: processedKeywords,
+        defaultCategoryId: defaultCategoryId || undefined
+      }, true);
+    } catch (e) {
       console.error(e);
     } finally {
       setIsSaving(false);
@@ -723,33 +685,17 @@ const ProfileEditor: React.FC<{
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Allowed Ledger Accounts</label>
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Default Ledger Account</label>
                 <div className="relative">
                     <select 
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 uppercase tracking-wide appearance-none outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
-                      value=""
-                      onChange={e => toggleCategory(e.target.value)}
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 uppercase tracking-wide appearance-none outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
+                    value={defaultCategoryId}
+                    onChange={e => setDefaultCategoryId(e.target.value)}
                     >
-                      <option value="">-- Add Account --</option>
-                      {categories.filter(c => !allowedCategoryIds.includes(c.id)).map(c => 
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      )}
+                    <option value="">-- Select Account --</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                </div>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {allowedCategoryIds.map(id => {
-                    const cat = categories.find(c => c.id === id);
-                    if (!cat) return null;
-                    return (
-                      <div key={id} className="bg-indigo-50 text-indigo-700 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-tight flex items-center gap-2">
-                        {cat.name}
-                        <button onClick={() => toggleCategory(id)} className="text-indigo-400 hover:text-indigo-700">
-                          <X size={12} />
-                        </button>
-                      </div>
-                    )
-                  })}
                 </div>
               </div>
             </div>
