@@ -97,7 +97,26 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       setIsCreatingProfile(true);
     } else {
       const p = profiles.find(prof => prof.id === value);
-      handleUpdate(t, { entityId: value || undefined, entityName: p?.name });
+      const updates: Partial<Transaction> = { entityId: value || undefined, entityName: p?.name };
+
+      // Smart-categorize if transaction is uncategorized
+      if (p && p.allowedCategoryIds && p.allowedCategoryIds.length > 0 && !t.categoryId) {
+        const allowedCategories = categories.filter(c => p.allowedCategoryIds!.includes(c.id));
+        const txDesc = t.description.toLowerCase();
+        
+        const matches = allowedCategories.filter(c => txDesc.includes(c.name.toLowerCase()));
+
+        if (matches.length === 1) {
+          // Unambiguous match found
+          updates.categoryId = matches[0].id;
+          updates.category = matches[0].name;
+        } else if (allowedCategories.length > 0) {
+          // Ambiguous or no match, fall back to first allowed as default
+          updates.categoryId = allowedCategories[0].id;
+          updates.category = allowedCategories[0].name;
+        }
+      }
+      handleUpdate(t, updates);
     }
   };
 
