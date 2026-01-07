@@ -324,7 +324,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 // Determine the best value for category select
                 const currentCatId = t.categoryId || categories.find(c => c.name === t.category)?.id || '';
 
-                const availableCategories = useMemo(() => {
+                const availableCategories = (() => {
                   const profile = profiles.find(p => p.id === t.entityId);
                   if (profile && profile.allowedCategoryIds && profile.allowedCategoryIds.length > 0) {
                     const allowed = categories.filter(c => profile.allowedCategoryIds!.includes(c.id));
@@ -338,7 +338,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     return allowed;
                   }
                   return categories;
-                }, [t.entityId, profiles, categories, currentCatId]);
+                })();
 
                 return (
                   <tr key={t.id} className={`group hover:bg-slate-50/50 transition-all ${selectedIds.has(t.id) ? 'bg-indigo-50/30' : ''}`}>
