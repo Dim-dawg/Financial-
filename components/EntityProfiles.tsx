@@ -306,7 +306,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                     <tr className="text-[9px] font-black uppercase text-slate-400 tracking-widest">
                       <th className="pb-4">Date</th>
                       <th className="pb-4">Ledger Description</th>
-                      <th className="pb-4">Assign To</th>
+                      <th className="pb-4">GL Account</th>
                       <th className="pb-4 text-right">Amount</th>
                       <th className="pb-4 w-10"></th>
                     </tr>
@@ -320,37 +320,44 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      paginatedTransactions.map(t => (
-                        <tr key={t.id} className="group hover:bg-slate-50 transition-colors">
-                          <td className="py-4 text-xs font-bold text-slate-500 tabular-nums w-24">{t.date}</td>
-                          <td className="py-4 max-w-[200px]">
-                            <p className="text-xs font-black text-slate-800 truncate">{t.description}</p>
-                            <p className="text-[9px] text-slate-400 font-medium uppercase truncate">{t.originalDescription}</p>
-                          </td>
-                          <td className="py-4 pr-4">
-                            <div className="relative">
-                                {assigningId === t.id ? (
-                                    <div className="flex items-center gap-2 text-xs font-bold text-indigo-600">
-                                        <Loader2 className="w-3 h-3 animate-spin" /> Saving...
-                                    </div>
-                                ) : (
-                                    <div className="relative group/sel">
-                                        <select 
-                                            className={`w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-tight outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 cursor-pointer ${!t.entityId ? 'text-amber-600' : 'text-slate-700'}`}
-                                            value={t.entityId || ''}
-                                            onChange={(e) => handleAssignTransaction(t, e.target.value)}
-                                        >
-                                            <option value="" disabled>-- Assign --</option>
-                                            {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                        </select>
-                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-3 h-3 pointer-events-none" />
-                                    </div>
-                                )}
-                            </div>
-                          </td>
-                          <td className={`py-4 text-right text-xs font-black tabular-nums ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-900'}`}>
-                            {t.type === TransactionType.INCOME ? '+' : '-'}${t.amount.toFixed(2)}
-                          </td>
+                        paginatedTransactions.map(t => {
+                          const currentCatId = t.categoryId || categories.find(c => c.name === t.category)?.id || '';
+                          const availableCategories = selectedEntity.allowedCategoryIds 
+                            ? categories.filter(c => selectedEntity.allowedCategoryIds.includes(c.id))
+                            : categories;
+                          
+                          // Ensure current category is available
+                          if (currentCatId && !availableCategories.some(c => c.id === currentCatId)) {
+                            const currentCategoryInGlobal = categories.find(c => c.id === currentCatId);
+                            if (currentCategoryInGlobal) availableCategories.push(currentCategoryInGlobal);
+                          }
+
+                          return (
+                            <tr key={t.id} className="group hover:bg-slate-50 transition-colors">
+                              <td className="py-4 text-xs font-bold text-slate-500 tabular-nums w-24">{t.date}</td>
+                              <td className="py-4">
+                                <p className="text-xs font-black text-slate-800 truncate">{t.description}</p>
+                                <p className="text-[9px] text-slate-400 font-medium uppercase truncate">{t.originalDescription}</p>
+                              </td>
+                              <td className="py-4 pr-4">
+                                <div className="relative">
+                                  <select 
+                                    className="w-full pl-3 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-tight outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 cursor-pointer"
+                                    value={currentCatId}
+                                    onChange={(e) => {
+                                      const cat = categories.find(c => c.id === e.target.value);
+                                      if (cat) onUpdateTransaction({ ...t, category: cat.name, categoryId: cat.id });
+                                    }}
+                                  >
+                                    <option value="">Uncategorized</option>
+                                    {availableCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                  </select>
+                                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-3 h-3 pointer-events-none" />
+                                </div>
+                              </td>
+                              <td className={`py-4 text-right text-xs font-black tabular-nums ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                {t.type === TransactionType.INCOME ? '+' : '-'}${t.amount.toFixed(2)}
+                              </td>
                           <td className="py-4 pl-2 text-right">
                             {!isUnassignedView && (
                               <button 
