@@ -193,15 +193,9 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
     try {
       if (editingProfile) {
         await onUpdateProfile(data);
-        if (runBulkApply && data.id && data.defaultCategoryId) {
-          await bulkApplyProfileRule(data.keywords, data.id, data.defaultCategoryId);
-        }
         setToast({ message: `Identity updated successfully.`, type: 'success' });
       } else {
-        const result = await onAddProfile(data);
-        if (runBulkApply && result?.id && result?.defaultCategoryId) {
-          await bulkApplyProfileRule(result.keywords, result.id, result.defaultCategoryId);
-        }
+        await onAddProfile(data);
         setToast({ message: `New identity registered.`, type: 'success' });
       }
       setView('DIRECTORY');
@@ -271,7 +265,9 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                           {selectedEntity.type}
                         </span>
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          {categories.find(c => c.id === selectedEntity.defaultCategoryId)?.name || 'General Account'}
+                          {selectedEntity.allowedCategoryIds && selectedEntity.allowedCategoryIds.length > 0
+                            ? selectedEntity.allowedCategoryIds.map(id => categories.find(c => c.id === id)?.name).join(', ')
+                            : 'General Account'}
                         </span>
                       </>
                     ) : (
@@ -573,7 +569,7 @@ const EntityProfiles: React.FC<EntityProfilesProps> = ({
                         <h4 className="text-sm font-black text-slate-800 truncate leading-tight">{p.name}</h4>
                         <div className="flex items-center justify-between mt-3">
                           <span className="text-[9px] font-black uppercase text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                            {categories.find(c => c.id === p.defaultCategoryId)?.name || 'General'}
+                            {p.allowedCategoryIds && p.allowedCategoryIds.length > 0 ? `${p.allowedCategoryIds.length} Accounts` : 'General'}
                           </span>
                           <div className="flex items-center gap-1.5">
                             <History size={12} className="text-indigo-400" />
@@ -613,9 +609,15 @@ const ProfileEditor: React.FC<{
   const [type, setType] = useState<'VENDOR' | 'CLIENT'>(profile?.type || 'VENDOR');
   const [keywordsStr, setKeywordsStr] = useState(profile?.keywords?.join(', ') || profile?.name || '');
   const [description, setDescription] = useState(profile?.description || '');
-  const [defaultCategoryId, setDefaultCategoryId] = useState(profile?.defaultCategoryId || '');
+  const [allowedCategoryIds, setAllowedCategoryIds] = useState<string[]>(profile?.allowedCategoryIds || []);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const toggleCategory = (id: string) => {
+    setAllowedCategoryIds(prev => 
+      prev.includes(id) ? prev.filter(catId => catId !== id) : [...prev, id]
+    );
+  };
 
   const handleMagicFill = async () => {
     if (!name) return;
@@ -625,7 +627,7 @@ const ProfileEditor: React.FC<{
       setType(data.type);
       setKeywordsStr(data.keywords.join(', '));
       const cat = categories.find(c => c.name === data.defaultCategory);
-      if (cat) setDefaultCategoryId(cat.id);
+      if (cat) setAllowedCategoryIds([cat.id]);
       if (data.description) setDescription(data.description);
     } catch (err) {
       console.error(err);
@@ -634,25 +636,24 @@ const ProfileEditor: React.FC<{
     }
   };
 
-  const handleSaveClick = async () => {
-    setIsSaving(true);
-    try {
-      // Process keywords: split, trim, filter empty, and sort by length DESC
-      const processedKeywords = keywordsStr
-        .split(',')
-        .map(k => k.trim())
-        .filter(k => k.length > 0)
-        .sort((a, b) => b.length - a.length);
-
-      await onSave({ 
-        id: profile?.id || `prof-${Date.now()}`, 
-        name, type, 
-        description, 
-        tags: [], 
-        keywords: processedKeywords,
-        defaultCategoryId: defaultCategoryId || undefined
-      }, true);
-    } catch (e) {
+    const handleSaveClick = async () => {
+      setIsSaving(true);
+      try {
+        // Process keywords: split, trim, filter empty, and sort by length DESC
+        const processedKeywords = keywordsStr
+          .split(',')
+          .map(k => k.trim())
+          .filter(k => k.length > 0)
+          .sort((a, b) => b.length - a.length);
+  
+        await onSave({ 
+          id: profile?.id || `prof-${Date.now()}`, 
+          name, type, 
+          description, 
+          tags: [], 
+          keywords: processedKeywords,
+          allowedCategoryIds: allowedCategoryIds
+        }, true);    } catch (e) {
       console.error(e);
     } finally {
       setIsSaving(false);
@@ -716,17 +717,33 @@ const ProfileEditor: React.FC<{
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Default Ledger Account</label>
+                <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Allowed Ledger Accounts</label>
                 <div className="relative">
                     <select 
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 uppercase tracking-wide appearance-none outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
-                    value={defaultCategoryId}
-                    onChange={e => setDefaultCategoryId(e.target.value)}
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 uppercase tracking-wide appearance-none outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
+                      value=""
+                      onChange={e => toggleCategory(e.target.value)}
                     >
-                    <option value="">-- Select Account --</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      <option value="">-- Add Account --</option>
+                      {categories.filter(c => !allowedCategoryIds.includes(c.id)).map(c => 
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      )}
                     </select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {allowedCategoryIds.map(id => {
+                    const cat = categories.find(c => c.id === id);
+                    if (!cat) return null;
+                    return (
+                      <div key={id} className="bg-indigo-50 text-indigo-700 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-tight flex items-center gap-2">
+                        {cat.name}
+                        <button onClick={() => toggleCategory(id)} className="text-indigo-400 hover:text-indigo-700">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             </div>

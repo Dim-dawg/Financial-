@@ -45,8 +45,7 @@ export interface EntityProfile {
   description: string;
   tags: string[];
   keywords: string[];
-  defaultCategoryId?: string;
-  defaultCategory?: string;
+  allowedCategoryIds?: string[];
   sources?: { title: string; uri: string }[];
 }
 

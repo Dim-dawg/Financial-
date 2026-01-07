@@ -112,6 +112,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         description: 'Created from Ledger',
         tags: [],
         keywords: [newProfileName],
+        allowedCategoryIds: [],
       };
 
       const created = await onCreateProfile(newProfile);
@@ -323,6 +324,22 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 // Determine the best value for category select
                 const currentCatId = t.categoryId || categories.find(c => c.name === t.category)?.id || '';
 
+                const availableCategories = useMemo(() => {
+                  const profile = profiles.find(p => p.id === t.entityId);
+                  if (profile && profile.allowedCategoryIds && profile.allowedCategoryIds.length > 0) {
+                    const allowed = categories.filter(c => profile.allowedCategoryIds!.includes(c.id));
+                    // Ensure the current category is in the list if it's not in the allowed list
+                    if (currentCatId && !allowed.some(c => c.id === currentCatId)) {
+                      const currentCategory = categories.find(c => c.id === currentCatId);
+                      if (currentCategory) {
+                        return [...allowed, currentCategory];
+                      }
+                    }
+                    return allowed;
+                  }
+                  return categories;
+                }, [t.entityId, profiles, categories, currentCatId]);
+
                 return (
                   <tr key={t.id} className={`group hover:bg-slate-50/50 transition-all ${selectedIds.has(t.id) ? 'bg-indigo-50/30' : ''}`}>
                     <td className="px-6 py-4">
@@ -379,7 +396,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         >
                           <option value="">Uncategorized</option>
                           <option value="Uncategorized">Uncategorized</option>
-                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {availableCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
                     </td>
