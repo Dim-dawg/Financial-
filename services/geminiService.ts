@@ -47,6 +47,20 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2, baseDelay = 3000)
   }
 }
 
+// Safe API Key retrieval
+const getApiKey = () => {
+  if (typeof process !== "undefined" && process.env && process.env.API_KEY) {
+    return process.env.API_KEY;
+  }
+  // Fallback for some environment injections
+  // @ts-ignore
+  if (window.process && window.process.env && window.process.env.API_KEY) {
+    // @ts-ignore
+    return window.process.env.API_KEY;
+  }
+  return "";
+};
+
 export const readFileAsBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -68,7 +82,10 @@ export const parseDocumentWithGemini = async (
   base64Data: string
 ): Promise<Transaction[]> => {
   return withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("API Key is missing. Please check your configuration.");
+    
+    const ai = new GoogleGenAI({ apiKey });
     const mimeType = file.type || 'image/jpeg';
     
     const response = await ai.models.generateContent({
@@ -111,7 +128,10 @@ export const autoFillProfileData = async (entityName: string): Promise<{
   sources: { title: string; uri: string }[];
 }> => {
   return withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("API Key missing");
+    
+    const ai = new GoogleGenAI({ apiKey });
     
     const searchResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -169,7 +189,10 @@ export const autoFillProfileData = async (entityName: string): Promise<{
 
 export const generateFinancialNarrative = async (summary: any): Promise<string> => {
   return withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    if (!apiKey) return "API Key missing. Cannot generate narrative.";
+    
+    const ai = new GoogleGenAI({ apiKey });
     const prompt = `As a financial analyst, write a Management Discussion and Analysis (MD&A) for a business with the following summary:
     Total Income: $${summary.totalIncome.toFixed(2)}
     Total Expenses: $${summary.totalExpense.toFixed(2)}
